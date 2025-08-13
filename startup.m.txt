@@ -1,0 +1,1 @@
+addpath('C:\Users\DELL\Documents\MATLAB\casadi-3.7.0-windows64-matlab2018b')
