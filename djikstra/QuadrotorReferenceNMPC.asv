@@ -23,7 +23,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % clear; clc; close all;
 
-function [ref_fun, ref_data] = QuadrotorReferenceNMPC(start_xy, goal_xy, mass, r_drone, r_safe)
+function [ref_fun, ref_data] = QuadrotorReferenceNMPC(start_xy, goal_xy, mass)
 % QuadrotorReferenceNMPC
 % Menghasilkan fungsi reference trajectory untuk NMPC quadrotor
 % Input:
@@ -62,7 +62,7 @@ function [ref_fun, ref_data] = QuadrotorReferenceNMPC(start_xy, goal_xy, mass, r
         % --- Halangan vertikal memotong lintasan ---
         12, 5,  3, 18;     % dinding vertikal kiri
         22, 8,  3, 15;     % dinding vertikal tengah
-        38, 10,  3, 20;     % dinding vertikal kanan
+        38, 6,  3, 20;     % dinding vertikal kanan
 
         % --- Halangan kecil random (gangguan tambahan) ---
         8,  18, 3, 3;      % obstacle kecil
@@ -99,7 +99,7 @@ function [ref_fun, ref_data] = QuadrotorReferenceNMPC(start_xy, goal_xy, mass, r
     rng(5); % reproducible
 
     %% ----------------------- OCCUPANCY GRID ------------------------ %%
-    [G, x_coords, y_coords] = buildOccupancyGrid(map_size, resolution, obstacles, r_drone, r_safe);
+    [G, x_coords, y_coords] = buildOccupancyGrid(map_size, resolution, obstacles);
     start_idx = world2grid(start_xy, x_coords, y_coords);
     goal_idx  = world2grid(goal_xy,  x_coords, y_coords);
 
@@ -200,7 +200,7 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %                           HELPER FUNCTIONS                             %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [G, x_coords, y_coords] = buildOccupancyGrid(map_size, res, obstacles, r_drone, r_safe)
+function [G, x_coords, y_coords] = buildOccupancyGrid(map_size, res, obstacles)
     nx = ceil(map_size(1)/res)+1; ny = ceil(map_size(2)/res)+1;
     x_coords = linspace(0, map_size(1), nx);
     y_coords = linspace(0, map_size(2), ny);
@@ -210,18 +210,11 @@ function [G, x_coords, y_coords] = buildOccupancyGrid(map_size, res, obstacles, 
         x0=obstacles(i,1); y0=obstacles(i,2); w=obstacles(i,3); h=obstacles(i,4);
 %         xi = find(x_coords>=x0 & x_coords<=x0+w);
 %         yi = find(y_coords>=y0 & y_coords<=y0+h);
+    inflate = 1.0; % meter, radius drone + safety margin
+    xi = round((x0 - inflate)/res)+1 : round((x0 + w + inflate)/res)+1;
+    yi = round((y0 - inflate)/res)+1 : round((y0 + h + inflate)/res)+1;
+    G(xi, yi) = true;
 
-%         xi = round((x0 - inflate)/res)+1 : round((x0 + w + inflate)/res)+1;
-%         yi = round((y0 - inflate)/res)+1 : round((y0 + h + inflate)/res)+1;
-%         G(xi, yi) = true;
-
-        xi_min = max(1, round((x0 - inflate)/res)+1);
-        xi_max = min(nx, round((x0 + w + inflate)/res)+1);
-
-        yi_min = max(1, round((y0 - inflate)/res)+1);
-        yi_max = min(ny, round((y0 + h + inflate)/res)+1);
-
-        G(xi_min:xi_max, yi_min:yi_max) = true;
     end
 end
 

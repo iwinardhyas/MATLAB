@@ -11,6 +11,7 @@ clc
 m = 0.5;    % Massa (kg)
 g = 9.81;   % Gravitasi (m/s^2)
 l = 0.25;   % Panjang lengan (m)
+rad = 0.25;
 Ixx = 4.85e-3; % Momen inersia
 Iyy = 4.85e-3;
 Izz = 8.81e-3;
@@ -227,6 +228,12 @@ for k = 0:N-1
 
 end
 
+N_solver = round(numel(lbw)/nx) - 1;   % infer dari ukuran solver
+assert( nx*(N_solver+1) == numel(lbw), 'Ukuran lbw tidak cocok dengan nx*(N+1)');
+
+% Opsional: log
+fprintf('NMPC expects nx=%d, N=%d (x0 length = %d)\n', nx, N_solver, numel(lbw));
+
 % Terminal cost
 Qf = 3 * Q; % Higher terminal weight
 J = J + (X_vars{N+1} - X_ref_params{N+1})' * Qf * (X_vars{N+1} - X_ref_params{N+1});
@@ -249,77 +256,104 @@ solver_options.ipopt.mu_strategy = 'adaptive';
 solver = nlpsol('solver', 'ipopt', nlp, solver_options);
 
 %% 5. Simulation Loop
-T_sim = 30;
-N_sim = T_sim / dt;
-history_x = zeros(nx, N_sim + 1);
-history_u = zeros(nu, N_sim);
-history_x_ref = zeros(nx, N_sim + 1);
+fprintf('Starting NMPC simulation...\n');
+% fprintf('Initial state: [%.3f, %.3f, %.3f]\n', current_state(1:3)');
+start_xy = [4.0, 4.0];
+goal_xy  = [46, 30];
+mass     = 1.2;
 
-% Initial state: start closer to first reference point
-x_ref_initial = QuadrotorReferenceTrajectory1(0);
+[ref_fun, ref_data] = QuadrotorReferenceNMPC(start_xy, goal_xy, mass,l,rad);
+x_ref_initial = ref_fun(0);
 current_state = zeros(nx, 1);
 current_state(1:3) = x_ref_initial(1:3); % Start at reference position
 current_state(3) = max(current_state(3), 0.0); % Ensure minimum altitude
 history_x(:, 1) = current_state;
 
-% Initialize warm start
-% arg_w0 = w0;
-
-fprintf('Starting NMPC simulation...\n');
-% fprintf('Initial state: [%.3f, %.3f, %.3f]\n', current_state(1:3)');
-start_xy = [0, 0];
-goal_xy  = [46, 30];
-mass     = 1.2;
-
-[ref_fun, ref_data] = QuadrotorReferenceNMPC(start_xy, goal_xy, mass);
-
+T_sim = ref_data.t(end);
+N_sim = round(T_sim / dt);
+history_x = zeros(nx, N_sim + 1);
+history_u = zeros(nu, N_sim);
+history_x_ref = zeros(nx, N_sim + 1);
 
 for i = 1:N_sim
     current_time = (i-1) * dt;
-    
-    % Get reference trajectory
+  
+% Pastikan sudah hitung reference saat ini
     x_ref_at_current_time = ref_fun(current_time);
-    history_x_ref(:, i) = x_ref_at_current_time;   % ambil semua 12 elemen
+    x_ref_at_current_time = x_ref_at_current_time(1:nx); % pastikan hanya 12 elemen
 
-    % Build parameter vector
-    X_ref_horizon = zeros(nx, N+1);
-    for k = 1:N+1
+    X_ref_horizon = zeros(nx, N_solver+1);
+    for k = 1:(N_solver+1)
         t_pred = current_time + (k-1)*dt;
-        X_ref_horizon(:, k) = ref_fun(t_pred);     % langsung 12 elemen
-    end
-    actual_params = [current_state; reshape(X_ref_horizon, [], 1)];
-    
-    % Solve NMPC
-    try
-        tic;
-        sol = solver('x0', arg_w0, 'lbx', lbw, 'ubx', ubw, ...
-                     'lbg', lbg, 'ubg', ubg, 'p', actual_params);
-        solver_time = toc; % catat waktu solver
-        fprintf('Step %d: Solver time = %.4f s (dt = %.4f s)\n', i, solver_time, dt);
-        solver_times(i) = solver_time;
-        
-        % Extract optimal control
-        opt_w = full(sol.x);
-        u_optimal = opt_w(nx + 1 : nx + nu);
-        
-        % Check solver status (compatible with different CasADi versions)
-        try
-            if isfield(sol, 'stats') && isfield(sol.stats, 'return_status')
-                status = char(sol.stats.return_status);
-                if ~strcmp(status, 'Solve_Succeeded')
-                    fprintf('Warning: Solver status at step %d: %s\n', i, status);
-                end
+        ref_val = ref_fun(t_pred);
+        ref_val = ref_val(1:nx); % ambil hanya 12 elemen state
+
+        if t_pred > ref_data.t(end)
+            if k > 1
+                ref_val = X_ref_horizon(:,k-1);
+            else
+                ref_val = history_x_ref(:,max(i-1,1));
             end
-        catch
-            % Ignore status check if not available
         end
-        
-    catch ME
-        fprintf('Solver failed at step %d: %s\n', i, ME.message);
-        % Use hover thrust as fallback
-        u_optimal = thrust_hover_value * ones(nu, 1);
-        opt_w = arg_w0; % Keep previous solution for warm start
+        X_ref_horizon(:,k) = ref_val;
     end
+
+    actual_params = [current_state; X_ref_horizon(:)];
+
+    % Pastikan ukuran arg_w0 sesuai
+    n_w = numel(lbw);
+    if numel(arg_w0) ~= n_w
+%         fprintf('Menyesuaikan arg_w0: %d -> %d elemen\n', numel(arg_w0), n_w);
+        if numel(arg_w0) > n_w
+            arg_w0 = arg_w0(1:n_w);
+        else
+            arg_w0 = [arg_w0; zeros(n_w - numel(arg_w0), 1)];
+        end
+    end
+
+    % Pastikan ukuran p sesuai
+    n_p = solver.size_in('p');
+    if numel(actual_params) ~= n_p
+%         fprintf('Menyesuaikan actual_params: %d -> %d elemen\n', numel(actual_params), n_p);
+        if numel(actual_params) > n_p
+            actual_params = actual_params(1:n_p);
+        else
+            actual_params = [actual_params; zeros(n_p - numel(actual_params), 1)];
+        end
+    end
+
+
+    % Solve NMPC
+%     try
+    tic;
+    sol = solver('x0', arg_w0, 'lbx', lbw, 'ubx', ubw, ...
+                 'lbg', lbg, 'ubg', ubg, 'p', actual_params);
+    solver_time = toc; % catat waktu solver
+    fprintf('Step %d: Solver time = %.4f s (dt = %.4f s)\n', i, solver_time, dt);
+    solver_times(i) = solver_time;
+
+    % Extract optimal control
+    opt_w = full(sol.x);
+    u_optimal = opt_w(nx + 1 : nx + nu);
+
+    % Check solver status (compatible with different CasADi versions)
+    try
+        if isfield(sol, 'stats') && isfield(sol.stats, 'return_status')
+            status = char(sol.stats.return_status);
+            if ~strcmp(status, 'Solve_Succeeded')
+                fprintf('Warning: Solver status at step %d: %s\n', i, status);
+            end
+        end
+    catch
+        % Ignore status check if not available
+    end
+        
+%     catch ME
+%         fprintf('Solver failed at step %d: %s\n', i, ME.message);
+%         % Use hover thrust as fallback
+%         u_optimal = thrust_hover_value * ones(nu, 1);
+%         opt_w = arg_w0; % Keep previous solution for warm start
+%     end
     
     history_u(:, i) = u_optimal;
     
@@ -338,11 +372,13 @@ for i = 1:N_sim
                 x_ref_at_current_time(1), x_ref_at_current_time(2), x_ref_at_current_time(3), pos_error);
         fprintf('           Thrust: [%.2f, %.2f, %.2f, %.2f] N\n', u_optimal');
     end
+%     ref_val = ref_fun(T_sim);
+    history_x_ref(:, i+1) = x_ref_at_current_time;
 end
 
 % Final reference point
-ref_val = ref_fun(T_sim);
-history_x_ref(:, N_sim + 1) = ref_val;
+% ref_val = ref_fun(T_sim);
+% history_x_ref(:, N_sim + 1) = ref_val;
 
 
 fprintf('Simulation completed!\n');
@@ -384,14 +420,6 @@ else
     legend('Actual', 'Reference'); title('Z Position');
     grid on;
     
-    % 3D trajectory
-    subplot(2,3,4);
-    plot3(history_x(1,:), history_x(2,:), history_x(3,:), 'b-', 'LineWidth', 2); hold on;
-    plot3(history_x_ref(1,:), history_x_ref(2,:), history_x_ref(3,:), 'r--', 'LineWidth', 1.5);
-    xlabel('X (m)'); ylabel('Y (m)'); zlabel('Z (m)');
-    legend('Actual', 'Reference'); title('3D Trajectory');
-    grid on; axis equal;
-    
     % Control inputs
     subplot(2,3,5);
     time_u = 0:dt:(T_sim-dt);
@@ -406,6 +434,14 @@ else
     xlabel('Time (s)'); ylabel('Angle (degrees)');
     legend('\phi (roll)', '\theta (pitch)', '\psi (yaw)');
     title('Orientation'); grid on;
+    
+        % 3D trajectory
+    figure;
+    plot3(history_x(1,:), history_x(2,:), history_x(3,:), 'b-', 'LineWidth', 2); hold on;
+    plot3(history_x_ref(1,:), history_x_ref(2,:), history_x_ref(3,:), 'r--', 'LineWidth', 1.5);
+    xlabel('X (m)'); ylabel('Y (m)'); zlabel('Z (m)');
+    legend('Actual', 'Reference'); title('3D Trajectory');
+    grid on; axis equal;
 end
 
 %% Support Functions
