@@ -162,3 +162,25 @@ legend('actual','reference')
 %ylabel('Thrust Input');
 %legend('Motor 1','Motor 2','Motor 3','Motor 4');
 
+figure;
+hold on;
+grid on;
+
+% Plot actual trajectory (X, Y, Z)
+plot3(xHistory(:,1), xHistory(:,2), xHistory(:,3), 'b-', 'LineWidth', 1.5);
+
+% Plot reference trajectory (Xref, Yref, Zref)
+plot3(yreftot(:,1), yreftot(:,2), yreftot(:,3), 'r--', 'LineWidth', 1.5);
+
+% Tambahkan titik start dan end
+plot3(xHistory(1,1), xHistory(1,2), xHistory(1,3), 'go', 'MarkerSize', 10, 'MarkerFaceColor', 'g'); % Start
+plot3(xHistory(end,1), xHistory(end,2), xHistory(end,3), 'ro', 'MarkerSize', 10, 'MarkerFaceColor', 'r'); % End
+
+xlabel('X Position (m)');
+ylabel('Y Position (m)');
+zlabel('Z Position (m)');
+title('Quadrotor 3D Trajectory: Actual vs Reference');
+legend('Actual Trajectory','Reference Trajectory','Start','End');
+view(45,30); % sudut pandang biar jelas
+
+
