@@ -14,7 +14,7 @@ All result images are stored in the img/ folder and automatically displayed belo
 
 ### 1\. Path Planning: Dijkstra vs Smoothed Path
 
-!\[App Screenshot](djikstra/img/1.png)
+!\[image](https://github.com/iwinardhyas/MATLAB/blob/main/djikstra/img/1.png)
 Explanation:
 
 Black Regions → Obstacles
@@ -33,7 +33,7 @@ Insight: The smoothed path balances shortest distance and drone dynamics feasibi
 
 ### 2\. Acceleration Profile After Time Scaling
 
-!\[App Screenshot](djikstra/img/2.png)
+!\[image](https://github.com/iwinardhyas/MATLAB/blob/main/djikstra/img/2.png)
 
 Explanation:
 
@@ -49,7 +49,7 @@ Insight: Sudden high peaks correspond to nonlinear corrections at corners. NMPC 
 
 ### 3\. Speed Profile After Time Scaling
 
-!\[App Screenshot](djikstra/img/3.png)
+!\[image](https://github.com/iwinardhyas/MATLAB/blob/main/djikstra/img/3.png)
 
 Explanation:
 
@@ -65,7 +65,7 @@ Insight: NMPC respects velocity constraints while adapting speed at challenging 
 
 ### 4\. Position Tracking, Motor Thrusts, and Orientation
 
-!\[App Screenshot](djikstra/img/4.png)
+!\[image](https://github.com/iwinardhyas/MATLAB/blob/main/djikstra/img/4.png)
 
 Top Row: Position Tracking
 
@@ -95,7 +95,7 @@ Insight: This figure proves NMPC provides tight trajectory tracking while managi
 
 ### 5\. 3D Trajectory Tracking
 
-!\[App Screenshot](djikstra/img/5.png)
+!\[image](https://github.com/iwinardhyas/MATLAB/blob/main/djikstra/img/5.png)
 
 Explanation:
 
