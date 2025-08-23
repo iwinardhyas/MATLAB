@@ -12,8 +12,9 @@ All result images are stored in the img/ folder and automatically displayed belo
 
 ## Simulation Results
 
-### 1. Path Planning: Dijkstra vs Smoothed Path
-![App Screenshot](img/Screenshot 2025-08-23 103117.png)
+### 1\. Path Planning: Dijkstra vs Smoothed Path
+
+!\[App Screenshot](img/1.png)
 Explanation:
 
 Black Regions → Obstacles
@@ -30,8 +31,9 @@ Blue Line → Smoothed path (removes sharp corners → feasible for drones)
 
 Insight: The smoothed path balances shortest distance and drone dynamics feasibility. Raw Dijkstra is often too jerky for real UAVs.
 
-### 2. Acceleration Profile After Time Scaling
-![App Screenshot](img/Screenshot 2025-08-23 103117.png)
+### 2\. Acceleration Profile After Time Scaling
+
+!\[App Screenshot](img/2.png)
 
 Explanation:
 
@@ -45,8 +47,9 @@ Most of the time, acceleration stays low → indicating efficient motion.
 
 Insight: Sudden high peaks correspond to nonlinear corrections at corners. NMPC ensures stability even during aggressive maneuvers.
 
-### 3. Speed Profile After Time Scaling
-![App Screenshot](img/Screenshot 2025-08-23 103117.png)
+### 3\. Speed Profile After Time Scaling
+
+!\[App Screenshot](img/3.png)
 
 Explanation:
 
@@ -58,10 +61,11 @@ Drone speed hovers near 3 m/s (limit set in NMPC constraints).
 
 Speed drops happen during tight turns or obstacle avoidance.
 
-Insight: NMPC respects velocity constraints while adapting speed at challenging sections. This keeps the drone safe & dynamically consistent.
+Insight: NMPC respects velocity constraints while adapting speed at challenging sections. This keeps the drone safe \& dynamically consistent.
 
-### 4. Position Tracking, Motor Thrusts, and Orientation
-![App Screenshot](img/Screenshot 2025-08-23 103117.png)
+### 4\. Position Tracking, Motor Thrusts, and Orientation
+
+!\[App Screenshot](img/4.png)
 
 Top Row: Position Tracking
 
@@ -89,8 +93,9 @@ Confirms NMPC stabilizes attitude control even under nonlinear motion.
 
 Insight: This figure proves NMPC provides tight trajectory tracking while managing motor forces and attitude stability.
 
-### 5. 3D Trajectory Tracking
-![App Screenshot](img/Screenshot 2025-08-23 103117.png)
+### 5\. 3D Trajectory Tracking
+
+!\[App Screenshot](img/5.png)
 
 Explanation:
 
@@ -112,8 +117,10 @@ Controller: NMPC with multiple shooting for nonlinear dynamics
 Performance: Stable position, speed, and orientation control
 
 Outputs: Path planning map, acceleration/speed profiles, tracking vs reference, motor thrusts, and 3D trajectory
+
 ## Authors
 
-- [@iwinardhyas](https://www.github.com/iwinardhyas)
+* [@iwinardhyas](https://www.github.com/iwinardhyas)
 
 erwin.ardias@gmail.com
+
