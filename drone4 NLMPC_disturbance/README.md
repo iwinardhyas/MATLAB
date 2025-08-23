@@ -1,13 +1,13 @@
 ### 1. 3D Trajectory Visualization
 
-![App Screenshot](https://via.placeholder.com/468x300?text=App+Screenshot+Here)
+![image](https://github.com/iwinardhyas/MATLAB/blob/main/drone4%20NLMPC_disturbance/img/1.png)
 
 
 # Results of NMPC Drone Control with ODE Solver and Wind Disturbance
 
 ## 1. **3D Trajectory Tracking**
 
-![3D Trajectory](Screenshot%202025-08-23%20120750.png)
+![image](https://github.com/iwinardhyas/MATLAB/blob/main/drone4%20NLMPC_disturbance/img/1.png)
 
 * **Description**:
   This plot shows the **3D path of the quadrotor** under NMPC control.
@@ -29,7 +29,7 @@
 
 ## 2. **Control Inputs (Rotor Thrusts)**
 
-![Control Inputs](Screenshot%202025-08-23%20120833.png)
+![image](https://github.com/iwinardhyas/MATLAB/blob/main/drone4%20NLMPC_disturbance/img/2.png))
 
 * **Description**:
   These four subplots show the **control inputs** applied to each of the quadrotor’s rotors:
@@ -50,7 +50,7 @@
 
 ## 3. **State Tracking (Positions, Angles, and Wind Disturbances)**
 
-![States](Screenshot%202025-08-23%20132548.png)
+![image](https://github.com/iwinardhyas/MATLAB/blob/main/drone4%20NLMPC_disturbance/img/3.png)
 
 * **Description**:
   These plots compare **actual states** vs **reference values**:

@@ -1,6 +1,6 @@
 ### 1. 3D Trajectory Visualization
 
-![App Screenshot](https://via.placeholder.com/468x300?text=App+Screenshot+Here)
+![image](https://github.com/iwinardhyas/MATLAB/blob/main/drone3/img/1.png)
 
 Explanation:
 
@@ -24,7 +24,7 @@ Importantly, the drone does not overshoot or oscillate, showing good stability o
 
 ### 2. Position Tracking Over Time
 
-![App Screenshot](https://via.placeholder.com/468x300?text=App+Screenshot+Here)
+![image](https://github.com/iwinardhyas/MATLAB/blob/main/drone3/img/2.png)
 
 Explanation:
 
