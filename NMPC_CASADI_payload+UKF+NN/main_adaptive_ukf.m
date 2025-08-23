@@ -1,4 +1,4 @@
-%% Adaptive NMPC dengan UKF untuk Estimasi Payload (Sumbu Z Saja)
+mm%% Adaptive NMPC dengan UKF untuk Estimasi Payload (Sumbu Z Saja)
 % Ini adalah contoh sederhana untuk mengilustrasikan konsep.
 % Dinamika drone disederhanakan hanya ke sumbu Z.
 
@@ -16,7 +16,7 @@ true_grav = 9.81; % m/s^2
 
 % Skenario Perubahan Payload (untuk simulasi "dunia nyata")
 actual_mass_at_start = nominal_mass_value;
-added_payload_mass = 1.0; % kg (payload tambahan)
+added_payload_mass = 1.0; % kg (payload tambahan)l
 time_of_payload_change = 5.0; % detik (waktu penambahan payload)
 actual_changed_mass = actual_mass_at_start + added_payload_mass;
 
