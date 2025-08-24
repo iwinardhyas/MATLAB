@@ -13,7 +13,7 @@ All result images are stored in the img/ folder and automatically displayed belo
 ## Simulation Results
 
 ### 1. Path Planning: Dijkstra vs Smoothed Path
-![App Screenshot](https://via.placeholder.com/468x300?text=App+Screenshot+Here)
+![App Screenshot](img/Screenshot 2025-08-23 103117.png)
 Explanation:
 
 Black Regions → Obstacles
@@ -31,7 +31,7 @@ Blue Line → Smoothed path (removes sharp corners → feasible for drones)
 Insight: The smoothed path balances shortest distance and drone dynamics feasibility. Raw Dijkstra is often too jerky for real UAVs.
 
 ### 2. Acceleration Profile After Time Scaling
-![App Screenshot](https://via.placeholder.com/468x300?text=App+Screenshot+Here)
+![App Screenshot](img/Screenshot 2025-08-23 103117.png)
 
 Explanation:
 
@@ -46,7 +46,7 @@ Most of the time, acceleration stays low → indicating efficient motion.
 Insight: Sudden high peaks correspond to nonlinear corrections at corners. NMPC ensures stability even during aggressive maneuvers.
 
 ### 3. Speed Profile After Time Scaling
-![App Screenshot](https://via.placeholder.com/468x300?text=App+Screenshot+Here)
+![App Screenshot](img/Screenshot 2025-08-23 103117.png)
 
 Explanation:
 
@@ -61,7 +61,7 @@ Speed drops happen during tight turns or obstacle avoidance.
 Insight: NMPC respects velocity constraints while adapting speed at challenging sections. This keeps the drone safe & dynamically consistent.
 
 ### 4. Position Tracking, Motor Thrusts, and Orientation
-![App Screenshot](https://via.placeholder.com/468x300?text=App+Screenshot+Here)
+![App Screenshot](img/Screenshot 2025-08-23 103117.png)
 
 Top Row: Position Tracking
 
@@ -90,7 +90,7 @@ Confirms NMPC stabilizes attitude control even under nonlinear motion.
 Insight: This figure proves NMPC provides tight trajectory tracking while managing motor forces and attitude stability.
 
 ### 5. 3D Trajectory Tracking
-![App Screenshot](https://via.placeholder.com/468x300?text=App+Screenshot+Here)
+![App Screenshot](img/Screenshot 2025-08-23 103117.png)
 
 Explanation:
 
