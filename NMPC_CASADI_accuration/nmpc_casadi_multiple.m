@@ -1,5 +1,6 @@
 % 1. Setup CasADi
 addpath('/home/zee/Erwin/MATLAB/casadi-3.7.1-linux64-matlab2018b');
+% addpath('C:\Users\DELL\Documents\MATLAB\casadi-3.7.0-windows64-matlab2018b');
 import casadi.*
 
 % Clear workspace to avoid variable conflicts
@@ -23,9 +24,9 @@ assert(isnumeric(g) && isscalar(g), 'Gravity g must be numeric scalar');
 nx = 12; % [x,y,z,phi,theta,psi,vx_inertial,vy_inertial,vz_inertial,p,q,r]
 nu = 4;  % [f1, f2, f3, f4]
 
-M = 2;
+M = 1;
 % Horizon Prediksi NMPC
-N = 5; % Kurangi horizon untuk konvergensi lebih baik
+N = 10; % Kurangi horizon untuk konvergensi lebih baik
 dt = 0.1; % Time step lebih kecil
 dt_sub = dt / M;  % pastikan M sudah didefinisikan
 
@@ -202,9 +203,13 @@ for k = 0:N-1
     
     % Cost function - CONSERVATIVE tuning untuk stabilitas
     % Position tracking dengan weight yang reasonable
-    Q = diag([200, 200, 500, ... % px, py, pz
-                   80, 80, 40, ...   % phi, theta, psi
-                   20, 20, 20, ...      % vx, vy, vz
+%     Q = diag([200, 200, 500, ... % px, py, pz
+%                    80, 80, 40, ...   % phi, theta, psi
+%                    20, 20, 20, ...      % vx, vy, vz
+%                    1, 1, 1]);  % p, q, r
+    Q = diag([30, 30, 60, ... % px, py, pz
+                   10, 10, 10, ...   % phi, theta, psi
+                   1, 1, 1, ...      % vx, vy, vz
                    1, 1, 1]);  % p, q, r
     R = diag([1, 1, 1, 1]); % Bobot upaya kontrol
     
@@ -249,14 +254,14 @@ solver_options.ipopt.mu_strategy = 'adaptive';
 solver = nlpsol('solver', 'ipopt', nlp, solver_options);
 
 %% 5. Simulation Loop
-T_sim = 20;
+T_sim = 50;
 N_sim = T_sim / dt;
 history_x = zeros(nx, N_sim + 1);
 history_u = zeros(nu, N_sim);
 history_x_ref = zeros(nx, N_sim + 1);
 
 % Initial state: start closer to first reference point
-x_ref_initial = QuadrotorReferenceTrajectory1(0);
+x_ref_initial = QuadrotorReferenceTrajectory5(0);
 current_state = zeros(nx, 1);
 current_state(1:3) = x_ref_initial(1:3); % Start at reference position
 current_state(3) = max(current_state(3), 0.0); % Ensure minimum altitude
@@ -272,11 +277,11 @@ for i = 1:N_sim
     current_time = (i-1) * dt;
     
     % Get reference trajectory
-    x_ref_at_current_time = QuadrotorReferenceTrajectory1(current_time);
+    x_ref_at_current_time = QuadrotorReferenceTrajectory5(current_time);
     history_x_ref(:, i) = x_ref_at_current_time;
     
     % Build parameter vector
-    X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory1);
+    X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory5);
     actual_params = [current_state; reshape(X_ref_horizon, [], 1)];
     
     % Solve NMPC
@@ -323,15 +328,23 @@ for i = 1:N_sim
     % Progress display with error analysis
     if mod(i, 20) == 0
         pos_error = norm(current_state(1:3) - x_ref_at_current_time(1:3));
+        x_error = norm(current_state(1,:) - x_ref_at_current_time(1,:));
+        y_error = norm(current_state(2,:) - x_ref_at_current_time(2,:));
+        z_error = norm(current_state(3,:) - x_ref_at_current_time(3,:));
+        phi_error = norm(current_state(4,:) - x_ref_at_current_time(4,:));
+        theta_error = norm(current_state(5,:) - x_ref_at_current_time(5,:));
+        psi_error = norm(current_state(6,:) - x_ref_at_current_time(6,:));
         fprintf('Step %d/%d, Pos: [%.2f, %.2f, %.2f], Ref: [%.2f, %.2f, %.2f], Error: %.2f\n', ...
                 i, N_sim, current_state(1), current_state(2), current_state(3), ...
                 x_ref_at_current_time(1), x_ref_at_current_time(2), x_ref_at_current_time(3), pos_error);
         fprintf('           Thrust: [%.2f, %.2f, %.2f, %.2f] N\n', u_optimal');
+        fprintf('Error: %.2f,Error: %.2f,Error: %.2f,Error: %.2f,Error: %.2f,Error: %.2f\n', ...
+            x_error,y_error,z_error,phi_error,theta_error,psi_error);
     end
 end
 
 % Final reference point
-history_x_ref(:, N_sim + 1) = QuadrotorReferenceTrajectory1(T_sim);
+history_x_ref(:, N_sim + 1) = QuadrotorReferenceTrajectory5(T_sim);
 
 fprintf('Simulation completed!\n');
 fprintf('Rata-rata waktu solver: %.4f s, Maksimum: %.4f s\n', ...
