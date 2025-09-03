@@ -1,5 +1,5 @@
 % 1. Setup CasADi
-addpath('C:\Users\DELL\Documents\MATLAB\casadi-3.7.0-windows64-matlab2018b');
+addpath('/home/zee/Erwin/MATLAB/casadi-3.7.1-linux64-matlab2018b');
 import casadi.*
 
 % Clear workspace to avoid variable conflicts
@@ -25,8 +25,8 @@ nu = 4;  % [f1, f2, f3, f4]
 
 M = 2;
 % Horizon Prediksi NMPC
-N = 30; % Kurangi horizon untuk konvergensi lebih baik
-dt = 0.01; % Time step lebih kecil
+N = 5; % Kurangi horizon untuk konvergensi lebih baik
+dt = 0.1; % Time step lebih kecil
 dt_sub = dt / M;  % pastikan M sudah didefinisikan
 
 % Hovering thrust per motor (pastikan numeric)
