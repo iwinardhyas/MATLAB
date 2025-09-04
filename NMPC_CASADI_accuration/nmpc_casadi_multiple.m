@@ -134,7 +134,8 @@ ubg = [ubg; zeros(nx,1)];
 
 % --- Generate warm start untuk propagasi awal ---
 arg_w0 = [];
-x_guess = zeros(nx,1); 
+% x_guess = zeros(nx,1); 
+x_guess = QuadrotorReferenceTrajectory5(0);
 
 % 1. Initial state
 arg_w0 = [arg_w0; x_guess];
@@ -225,10 +226,10 @@ for k = 0:N-1
     end
     
     % Input rate penalty
-    if k > 0
-        R_rate = 0.1 * eye(nu);
-        J = J + (U_vars{k+1} - U_vars{k})' * R_rate * (U_vars{k+1} - U_vars{k});
-    end
+%     if k > 0
+%         R_rate = 0.1 * eye(nu);
+%         J = J + (U_vars{k+1} - U_vars{k})' * R_rate * (U_vars{k+1} - U_vars{k});
+%     end
 
 end
 
@@ -243,18 +244,20 @@ nlp = struct('f', J, 'x', vertcat(w{:}), 'g', vertcat(g{:}), 'p', all_params_sym
 % Solver options - lebih konservatif untuk stabilitas
 solver_options = struct;
 solver_options.print_time = false;
-solver_options.ipopt.max_iter = 200;
-solver_options.ipopt.tol = 1e-4;
-solver_options.ipopt.acceptable_tol = 1e-3;
+solver_options.ipopt.max_iter = 5;
+solver_options.ipopt.tol = 1e-2;
+solver_options.ipopt.acceptable_tol = 1e-1;
 solver_options.ipopt.linear_solver = 'mumps';
-solver_options.ipopt.hessian_approximation = 'limited-memory';
+solver_options.ipopt.hessian_approximation = 'exact';
 solver_options.ipopt.print_level = 0;
 solver_options.ipopt.mu_strategy = 'adaptive';
 
 solver = nlpsol('solver', 'ipopt', nlp, solver_options);
+% solver.generate('nmpc_solver.c');
+% mex nmpc_solver.c -largeArrayDims -lipopt -lmumps
 
 %% 5. Simulation Loop
-T_sim = 50;
+T_sim = 1;
 N_sim = T_sim / dt;
 history_x = zeros(nx, N_sim + 1);
 history_u = zeros(nu, N_sim);
@@ -349,6 +352,22 @@ history_x_ref(:, N_sim + 1) = QuadrotorReferenceTrajectory5(T_sim);
 fprintf('Simulation completed!\n');
 fprintf('Rata-rata waktu solver: %.4f s, Maksimum: %.4f s\n', ...
         mean(solver_times), max(solver_times));
+%% Tracking Error
+pos_error = history_x(1:3,:) - history_x_ref(1:3,:);   % error posisi
+tracking_error = sqrt(sum(pos_error.^2,1));           % norm error tiap step
+mean_tracking_error = mean(tracking_error);           % rata-rata error
+
+%% Control Effort (energi)
+control_effort = sum(sum(history_u.^2)) * dt;          % integral u^2
+
+%% Smoothness (perubahan input)
+du = diff(history_u,1,2);                              % delta u
+smoothness = sum(sum(du.^2)) * dt;
+
+fprintf('Mean tracking error = %.4f m\n', mean_tracking_error);
+fprintf('Total control effort = %.4f\n', control_effort);
+fprintf('Smoothness index = %.4f\n', smoothness);
+
 
 
 % Plot results if function exists
