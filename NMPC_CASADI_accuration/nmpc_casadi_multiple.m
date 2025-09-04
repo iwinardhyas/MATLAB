@@ -135,7 +135,7 @@ ubg = [ubg; zeros(nx,1)];
 % --- Generate warm start untuk propagasi awal ---
 arg_w0 = [];
 % x_guess = zeros(nx,1); 
-x_guess = QuadrotorReferenceTrajectory5(0);
+x_guess = QuadrotorReferenceTrajectory4(0);
 
 % 1. Initial state
 arg_w0 = [arg_w0; x_guess];
@@ -257,14 +257,14 @@ solver = nlpsol('solver', 'ipopt', nlp, solver_options);
 % mex nmpc_solver.c -largeArrayDims -lipopt -lmumps
 
 %% 5. Simulation Loop
-T_sim = 1;
+T_sim = 100;
 N_sim = T_sim / dt;
 history_x = zeros(nx, N_sim + 1);
 history_u = zeros(nu, N_sim);
 history_x_ref = zeros(nx, N_sim + 1);
 
 % Initial state: start closer to first reference point
-x_ref_initial = QuadrotorReferenceTrajectory5(0);
+x_ref_initial = QuadrotorReferenceTrajectory4(0);
 current_state = zeros(nx, 1);
 current_state(1:3) = x_ref_initial(1:3); % Start at reference position
 current_state(3) = max(current_state(3), 0.0); % Ensure minimum altitude
@@ -280,11 +280,11 @@ for i = 1:N_sim
     current_time = (i-1) * dt;
     
     % Get reference trajectory
-    x_ref_at_current_time = QuadrotorReferenceTrajectory5(current_time);
+    x_ref_at_current_time = QuadrotorReferenceTrajectory4(current_time);
     history_x_ref(:, i) = x_ref_at_current_time;
     
     % Build parameter vector
-    X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory5);
+    X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory4);
     actual_params = [current_state; reshape(X_ref_horizon, [], 1)];
     
     % Solve NMPC
@@ -341,13 +341,13 @@ for i = 1:N_sim
                 i, N_sim, current_state(1), current_state(2), current_state(3), ...
                 x_ref_at_current_time(1), x_ref_at_current_time(2), x_ref_at_current_time(3), pos_error);
         fprintf('           Thrust: [%.2f, %.2f, %.2f, %.2f] N\n', u_optimal');
-        fprintf('Error: %.2f,Error: %.2f,Error: %.2f,Error: %.2f,Error: %.2f,Error: %.2f\n', ...
+        fprintf('Error_x: %.2f,Error_y: %.2f,Error_z: %.2f,Error_phi: %.2f,Error_theta: %.2f,Error_psi: %.2f\n', ...
             x_error,y_error,z_error,phi_error,theta_error,psi_error);
     end
 end
 
 % Final reference point
-history_x_ref(:, N_sim + 1) = QuadrotorReferenceTrajectory5(T_sim);
+history_x_ref(:, N_sim + 1) = QuadrotorReferenceTrajectory4(T_sim);
 
 fprintf('Simulation completed!\n');
 fprintf('Rata-rata waktu solver: %.4f s, Maksimum: %.4f s\n', ...

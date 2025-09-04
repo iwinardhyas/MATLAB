@@ -1,4 +1,4 @@
-function [ xdesired ] = QuadrotorReferenceTrajectory( t )
+function [ xdesired ] = QuadrotorReferenceTrajectory2( t )
     % Trajectory: Drone bergerak linear dari posisi awal ke posisi target
     % dengan kecepatan konstan.
     % Ini bagus untuk menguji kemampuan pelacakan kecepatan konstan.

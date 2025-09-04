@@ -1,4 +1,4 @@
-function animation = drone_Animation(x,y,z,roll,pitch,yaw)
+function animation = drone_Animation(t,x,y,z,roll,pitch,yaw)
 % This Animation code is for QuadCopter. Written by Jitendra Singh 
 
 %% Define design parameters
@@ -29,7 +29,12 @@ zp = zeros(1,length(to));
  view(68,53);
  grid on;
  axis equal;
- xlim([-1.5 1.5]); ylim([-1.5 1.5]); zlim([0 3.5]);
+%  xlim([-x x]); ylim([-y y]); zlim([0 z]);
+margin = 1;
+xlim([x - margin, x + margin]);
+ylim([y - margin, y + margin]);
+zlim([max(0, z - margin), z + margin]);
+
  title('Drone Animation')
  xlabel('X[m]');
  ylabel('Y[m]');

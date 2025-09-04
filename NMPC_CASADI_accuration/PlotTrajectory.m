@@ -149,5 +149,7 @@ axis equal; % Penting untuk memastikan skala sumbu sama, agar lintasan terlihat 
 view(45, 30); % Mengatur sudut pandang (azimuth, elevation) untuk tampilan 3D yang lebih baik
 hold off;
 
-% figure;
-% drone_Animation(x_actual,y_actual,z_actual,history_x(4, :),history_x(5, :),history_x(6, :))
+figure;
+grid on;
+drone_Animation(time_vector,x_actual,y_actual,z_actual,history_x(4, :),history_x(5, :),history_x(6, :))
+grid off;

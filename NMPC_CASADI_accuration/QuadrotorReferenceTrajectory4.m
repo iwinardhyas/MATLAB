@@ -1,7 +1,7 @@
 function [ xdesired ] = QuadrotorReferenceTrajectory4( t )
 
 % FORCE debug mode - pastikan ini yang dipanggil
-trajectory_type = 'aggressive_but_smooth';
+trajectory_type = 'helical';
 
 % Inisialisasi output
 xdesired = zeros(12, 1);
@@ -119,7 +119,8 @@ switch trajectory_type
         a_centripetal = radius * omega^2;
         phi = atan(a_centripetal / 9.81);
         theta = 0;
-        psi = atan2(ydot, xdot); % Menghadap arah gerakan
+%         psi = atan2(ydot, xdot); % Menghadap arah gerakan
+        psi = 0;
         
         phidot = 0; thetadot = 0; psidot = omega;
         
@@ -172,7 +173,8 @@ switch trajectory_type
         a_centripetal = radius * angular_speed^2;
         phi = atan(a_centripetal / 9.81);
         theta = 0;
-        psi = atan2(ydot, xdot);
+%         psi = atan2(ydot, xdot);
+        psi = 0;
 
         phidot = 0; thetadot = 0; psidot = angular_speed;
 
