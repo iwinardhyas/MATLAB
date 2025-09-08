@@ -135,7 +135,7 @@ ubg = [ubg; zeros(nx,1)];
 % --- Generate warm start untuk propagasi awal ---
 arg_w0 = [];
 % x_guess = zeros(nx,1); 
-x_guess = QuadrotorReferenceTrajectory4(0);
+x_guess = QuadrotorReferenceTrajectory6(0);
 
 % 1. Initial state
 arg_w0 = [arg_w0; x_guess];
@@ -264,7 +264,7 @@ history_u = zeros(nu, N_sim);
 history_x_ref = zeros(nx, N_sim + 1);
 
 % Initial state: start closer to first reference point
-x_ref_initial = QuadrotorReferenceTrajectory4(0);
+x_ref_initial = QuadrotorReferenceTrajectory6(0);
 current_state = zeros(nx, 1);
 current_state(1:3) = x_ref_initial(1:3); % Start at reference position
 current_state(3) = max(current_state(3), 0.0); % Ensure minimum altitude
@@ -280,11 +280,11 @@ for i = 1:N_sim
     current_time = (i-1) * dt;
     
     % Get reference trajectory
-    x_ref_at_current_time = QuadrotorReferenceTrajectory4(current_time);
+    x_ref_at_current_time = QuadrotorReferenceTrajectory6(current_time);
     history_x_ref(:, i) = x_ref_at_current_time;
     
     % Build parameter vector
-    X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory4);
+    X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory6);
     actual_params = [current_state; reshape(X_ref_horizon, [], 1)];
     
     % Solve NMPC
@@ -347,14 +347,14 @@ for i = 1:N_sim
 end
 
 % Final reference point
-history_x_ref(:, N_sim + 1) = QuadrotorReferenceTrajectory4(T_sim);
+history_x_ref(:, N_sim + 1) = QuadrotorReferenceTrajectory6(T_sim);
 
-results.history_x = history_x;
-results.history_u = history_u;
-results.history_x_ref = history_x_ref;
-results.dt = dt;
-results.method = 'SingleShooting';
-save('sim_single.mat','results');
+% results.history_x = history_x;
+% results.history_u = history_u;
+% results.history_x_ref = history_x_ref;
+% results.dt = dt;
+% results.method = 'SingleShooting';
+% save('sim_single.mat','results');
 
 
 fprintf('Simulation completed!\n');
