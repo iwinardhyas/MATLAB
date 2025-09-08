@@ -49,7 +49,7 @@ p = x(10); q = x(11); r = x(12);
 F_total = sum(u);
 tau_phi = l * (u(2) - u(4));
 tau_theta = l * (u(3) - u(1));
-tau_psi = 0.005 * (u(1) - u(2) + u(3) - u(4));
+tau_psi = 0.005 * (-u(1) + u(2) - u(3) + u(4));
 
 % Rotation matrices
 R_b_i = rotz(psi) * roty(theta) * rotx(phi);
@@ -208,8 +208,8 @@ for k = 0:N-1
 %                    80, 80, 40, ...   % phi, theta, psi
 %                    20, 20, 20, ...      % vx, vy, vz
 %                    1, 1, 1]);  % p, q, r
-    Q = diag([30, 30, 60, ... % px, py, pz
-                   10, 10, 10, ...   % phi, theta, psi
+    Q = diag([10, 100, 150, ... % px, py, pz
+                   1, 10, 10, ...   % phi, theta, psi
                    1, 1, 1, ...      % vx, vy, vz
                    1, 1, 1]);  % p, q, r
     R = diag([1, 1, 1, 1]); % Bobot upaya kontrol
@@ -226,10 +226,15 @@ for k = 0:N-1
     end
     
     % Input rate penalty
-%     if k > 0
+    if k > 0
 %         R_rate = 0.1 * eye(nu);
-%         J = J + (U_vars{k+1} - U_vars{k})' * R_rate * (U_vars{k+1} - U_vars{k});
-%     end
+        tracking_error = norm(X_vars{k+1}(1:3) - X_ref_params{k+1}(1:3)); % error posisi (x,y,z)
+        adapt_factor = 1 + tracking_error;  % semakin besar error, semakin longgar
+        R_rate = (0.1 / adapt_factor) * eye(nu);
+%         R_rate = rate_penalty_param * eye(nu);
+
+        J = J + (U_vars{k+1} - U_vars{k})' * R_rate * (U_vars{k+1} - U_vars{k});
+    end
 
 end
 
@@ -257,7 +262,7 @@ solver = nlpsol('solver', 'ipopt', nlp, solver_options);
 % mex nmpc_solver.c -largeArrayDims -lipopt -lmumps
 
 %% 5. Simulation Loop
-T_sim = 100;
+T_sim = 20;
 N_sim = T_sim / dt;
 history_x = zeros(nx, N_sim + 1);
 history_u = zeros(nu, N_sim);
@@ -284,6 +289,7 @@ for i = 1:N_sim
     history_x_ref(:, i) = x_ref_at_current_time;
     
     % Build parameter vector
+    rate_penalty_value = 0.1;
     X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory6);
     actual_params = [current_state; reshape(X_ref_horizon, [], 1)];
     
