@@ -1,7 +1,7 @@
 function [ xdesired ] = QuadrotorReferenceTrajectory4( t )
 
 % FORCE debug mode - pastikan ini yang dipanggil
-trajectory_type = 'helical';
+trajectory_type = 'fast_sine';
 
 % Inisialisasi output
 xdesired = zeros(12, 1);

@@ -349,6 +349,14 @@ end
 % Final reference point
 history_x_ref(:, N_sim + 1) = QuadrotorReferenceTrajectory4(T_sim);
 
+results.history_x = history_x;
+results.history_u = history_u;
+results.history_x_ref = history_x_ref;
+results.dt = dt;
+results.method = 'SingleShooting';
+save('sim_single.mat','results');
+
+
 fprintf('Simulation completed!\n');
 fprintf('Rata-rata waktu solver: %.4f s, Maksimum: %.4f s\n', ...
         mean(solver_times), max(solver_times));
