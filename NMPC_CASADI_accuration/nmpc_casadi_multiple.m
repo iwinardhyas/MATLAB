@@ -1,6 +1,6 @@
 % 1. Setup CasADi
-addpath('/home/zee/Erwin/MATLAB/casadi-3.7.1-linux64-matlab2018b');
-% addpath('C:\Users\DELL\Documents\MATLAB\casadi-3.7.0-windows64-matlab2018b');
+% addpath('/home/zee/Erwin/MATLAB/casadi-3.7.1-linux64-matlab2018b');
+addpath('C:\Users\DELL\Documents\MATLAB\casadi-3.7.0-windows64-matlab2018b');
 import casadi.*
 
 % Clear workspace to avoid variable conflicts
@@ -109,15 +109,29 @@ U_vars = cell(N, 1);
 X_sub_vars = cell(N, M-1);  % State intermediate dalam interval multiple shooting
 
 % Parameter vector: [current_state; reference_state]
-n_params = nx + nx*(N+1);  % [x0; xref_0; xref_1; ... xref_N]
+n_params = nx + nx*(N+1)+nu;  % [x0; xref_0; xref_1; ... xref_N]
 all_params_sym = MX.sym('all_params', n_params, 1);
 X_initial_param = all_params_sym(1:nx);
-X_ref_param = all_params_sym(nx+1:end);  % Hasil MX, bukan cell
+
+% Pisahkan vektor referensi dan parameter R_rate
+X_ref_param_start = nx + 1;
+X_ref_param_end = nx + nx*(N+1);
+R_rate_param_start = X_ref_param_end + 1;
+
+% X_ref_param = all_params_sym(nx+1:end);  % Hasil MX, bukan cell
+X_ref_param = all_params_sym(X_ref_param_start:X_ref_param_end);
+R_rate_param = all_params_sym(R_rate_param_start:end);
+
 X_ref_params = cell(N+1, 1);
+% for k = 0:N
+%     start_idx = nx + nx*k + 1;
+%     end_idx = nx + nx*(k+1);
+%     X_ref_params{k+1} = all_params_sym(start_idx:end_idx);
+% end
 for k = 0:N
-    start_idx = nx + nx*k + 1;
-    end_idx = nx + nx*(k+1);
-    X_ref_params{k+1} = all_params_sym(start_idx:end_idx);
+    start_idx = 1 + nx*k;
+    end_idx = nx*(k+1);
+    X_ref_params{k+1} = X_ref_param(start_idx:end_idx);
 end
 
 % Initial state variable
@@ -208,11 +222,11 @@ for k = 0:N-1
 %                    80, 80, 40, ...   % phi, theta, psi
 %                    20, 20, 20, ...      % vx, vy, vz
 %                    1, 1, 1]);  % p, q, r
-    Q = diag([10, 100, 150, ... % px, py, pz
+    Q = diag([10, 300, 400, ... % px, py, pz
                    1, 10, 10, ...   % phi, theta, psi
                    1, 1, 1, ...      % vx, vy, vz
                    1, 1, 1]);  % p, q, r
-    R = diag([1, 1, 1, 1]); % Bobot upaya kontrol
+    R = diag([0.5, 0.5, 0.5, 0.5]); % Bobot upaya kontrol
     
     J = J + (X_vars{k+1} - X_ref_params{k+1})' * Q * (X_vars{k+1} - X_ref_params{k+1}) + ...
             U_vars{k+1}' * R * U_vars{k+1};
@@ -227,11 +241,12 @@ for k = 0:N-1
     
     % Input rate penalty
     if k > 0
-%         R_rate = 0.1 * eye(nu);
-        tracking_error = norm(X_vars{k+1}(1:3) - X_ref_params{k+1}(1:3)); % error posisi (x,y,z)
-        adapt_factor = 1 + tracking_error;  % semakin besar error, semakin longgar
-        R_rate = (0.1 / adapt_factor) * eye(nu);
+        R_rate = 1 * eye(nu);
+%         tracking_error = norm(X_vars{k+1}(1:3) - X_ref_params{k+1}(1:3)); % error posisi (x,y,z)
+%         adapt_factor = 1 + tracking_error;  % semakin besar error, semakin longgar
+%         R_rate = (0.1 / adapt_factor) * eye(nu);
 %         R_rate = rate_penalty_param * eye(nu);
+%         R_rate = diag(R_rate_param); % Jadikan diagonal
 
         J = J + (U_vars{k+1} - U_vars{k})' * R_rate * (U_vars{k+1} - U_vars{k});
     end
@@ -239,7 +254,11 @@ for k = 0:N-1
 end
 
 % Terminal cost
-Qf = 3 * Q; % Higher terminal weight
+% Qf = 3 * Q; % Higher terminal weight
+Qf = diag([100, 100, 100, ... % px, py, pz
+                   10, 10, 10, ...   % phi, theta, psi
+                   1, 1, 1, ...      % vx, vy, vz
+                   1, 1, 1]);  % p, q, r
 J = J + (X_vars{N+1} - X_ref_params{N+1})' * Qf * (X_vars{N+1} - X_ref_params{N+1});
 
 
@@ -262,7 +281,7 @@ solver = nlpsol('solver', 'ipopt', nlp, solver_options);
 % mex nmpc_solver.c -largeArrayDims -lipopt -lmumps
 
 %% 5. Simulation Loop
-T_sim = 20;
+T_sim = 10;
 N_sim = T_sim / dt;
 history_x = zeros(nx, N_sim + 1);
 history_u = zeros(nu, N_sim);
@@ -288,10 +307,17 @@ for i = 1:N_sim
     x_ref_at_current_time = QuadrotorReferenceTrajectory6(current_time);
     history_x_ref(:, i) = x_ref_at_current_time;
     
+    error_pos = norm(current_state(1:3) - x_ref_at_current_time(1:3));
+    r_rate_scalar = calculateDynamicRRate(error_pos, 0.3);
+    r_rate_param = r_rate_scalar * ones(nu,1);
+
+    
     % Build parameter vector
-    rate_penalty_value = 0.1;
     X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory6);
-    actual_params = [current_state; reshape(X_ref_horizon, [], 1)];
+    actual_params = [current_state; reshape(X_ref_horizon, [], 1);r_rate_param];
+    
+    % Tampilkan nilai R_rate pada setiap langkah
+    fprintf('Step %d: Dynamic R_rate scalar = %.4f\n', i, r_rate_scalar);
     
     % Solve NMPC
     try
@@ -387,59 +413,6 @@ fprintf('Smoothness index = %.4f\n', smoothness);
 % Plot results if function exists
 if exist('PlotTrajectory', 'file') == 2
     PlotTrajectory;
-else
-    fprintf('PlotTrajectory function not found. Creating basic plots...\n');
-    
-    % Create time vector
-    time_vec = 0:dt:T_sim;
-    
-    % Basic trajectory plots
-    figure('Name', 'NMPC Quadrotor Trajectory', 'Position', [100 100 1200 800]);
-    
-    % Position plots
-    subplot(2,3,1);
-    plot(time_vec, history_x(1,:), 'b-', 'LineWidth', 2); hold on;
-    plot(time_vec, history_x_ref(1,:), 'r--', 'LineWidth', 1.5);
-    xlabel('Time (s)'); ylabel('X Position (m)');
-    legend('Actual', 'Reference'); title('X Position');
-    grid on;
-    
-    subplot(2,3,2);
-    plot(time_vec, history_x(2,:), 'b-', 'LineWidth', 2); hold on;
-    plot(time_vec, history_x_ref(2,:), 'r--', 'LineWidth', 1.5);
-    xlabel('Time (s)'); ylabel('Y Position (m)');
-    legend('Actual', 'Reference'); title('Y Position');
-    grid on;
-    
-    subplot(2,3,3);
-    plot(time_vec, history_x(3,:), 'b-', 'LineWidth', 2); hold on;
-    plot(time_vec, history_x_ref(3,:), 'r--', 'LineWidth', 1.5);
-    xlabel('Time (s)'); ylabel('Z Position (m)');
-    legend('Actual', 'Reference'); title('Z Position');
-    grid on;
-    
-    % 3D trajectory
-    subplot(2,3,4);
-    plot3(history_x(1,:), history_x(2,:), history_x(3,:), 'b-', 'LineWidth', 2); hold on;
-    plot3(history_x_ref(1,:), history_x_ref(2,:), history_x_ref(3,:), 'r--', 'LineWidth', 1.5);
-    xlabel('X (m)'); ylabel('Y (m)'); zlabel('Z (m)');
-    legend('Actual', 'Reference'); title('3D Trajectory');
-    grid on; axis equal;
-    
-    % Control inputs
-    subplot(2,3,5);
-    time_u = 0:dt:(T_sim-dt);
-    plot(time_u, history_u');
-    xlabel('Time (s)'); ylabel('Thrust (N)');
-    legend('Motor 1', 'Motor 2', 'Motor 3', 'Motor 4');
-    title('Motor Thrusts'); grid on;
-    
-    % Orientation
-    subplot(2,3,6);
-    plot(time_vec, rad2deg(history_x(4:6,:)'));
-    xlabel('Time (s)'); ylabel('Angle (degrees)');
-    legend('\phi (roll)', '\theta (pitch)', '\psi (yaw)');
-    title('Orientation'); grid on;
 end
 
 %% Support Functions
@@ -513,4 +486,18 @@ end
 
 function R_z = rotz(t)
     R_z = [cos(t), -sin(t), 0; sin(t), cos(t), 0; 0, 0, 1];
+end
+
+function r_rate_value = calculateDynamicRRate(tracking_error, max_error_threshold)
+    % Tingkatkan penalti laju input ketika tracking error (misalnya posisi) besar.
+    % Ini akan membuat kontroler lebih agresif untuk mengurangi error,
+    % tetapi tetap menghukum perubahan input yang terlalu tiba-tiba.
+    
+    % Normalisasi error
+    normalized_error = min(abs(tracking_error) / max_error_threshold, 1.0);
+    
+    % Gunakan fungsi nonlinier untuk mendapatkan nilai bobot
+    % Misalnya, fungsi kuadratik:
+    r_rate_value = 0.2 + 1.9 * (normalized_error)^10; % Nilai r_rate akan berkisar dari 0.1 hingga 1.0
+%     r_rate_value = 0.1 + exp(5*normalized_error - 5); % Contoh saja, sesuaikan sesuai kebutuhan
 end

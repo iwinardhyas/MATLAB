@@ -79,25 +79,66 @@ title('Quadrotor psi angle');
 hold off;
 
 % Plot thrust
-t = 0:dt:T_sim-dt;   % sumbu waktu
-figure;
-grid on;
-plot(t, history_u');
-xlabel('Time [s]');
-ylabel('Control Input');
-legend('u1','u2','u3','u4');   % sesuai nu
-title('History of Control Inputs');
-hold off;
+t = 0:dt:T_sim-dt;              % sumbu waktu untuk u
+du = diff(history_u,1,2);       % Δu
+t_du = 0:dt:(size(du,2)-1)*dt;  % sumbu waktu untuk Δu
+d2u = diff(du,1,2);             % Δ²u (jerk)
+t_d2u = 0:dt:(size(d2u,2)-1)*dt;
 
-du = diff(history_u,1,2);                % ukuran = nu x (N_sim-1)
-t_du = 0:dt:(size(du,2)-1)*dt;           % panjang sama persis
+% Total Variation (akumulasi |Δu|)
+tv = sum(abs(du),1);
+tv_cum = cumsum(tv);
+
+% Control energy
+u_energy = sum(history_u.^2,1);
+
+% FFT setup
+Fs = 1/dt;
+nfft = length(history_u);
+f = Fs*(0:(nfft/2))/nfft;
+U_fft = fft(history_u(1,:)); % contoh u1 saja
+P2 = abs(U_fft/nfft);
+P1 = P2(1:nfft/2+1);
+P1(2:end-1) = 2*P1(2:end-1);
+
+% ---- Plot all in one figure ----
 figure;
-plot(t_du, du');
-xlabel('Time [s]');
-ylabel('\Delta u');
+
+subplot(3,2,1);
+plot(t, history_u'); grid on;
+xlabel('Time [s]'); ylabel('u');
+title('Control Inputs');
+legend('u1','u2','u3','u4');
+
+subplot(3,2,2);
+plot(t_du, du'); grid on;
+xlabel('Time [s]'); ylabel('\Delta u');
+title('Control Smoothness (\Delta u)');
 legend('du1','du2','du3','du4');
-title('Control Smoothness (Delta U) vs Time');
-grid on;
+
+subplot(3,2,3);
+plot(t_du, tv_cum,'LineWidth',1.5); grid on;
+xlabel('Time [s]'); ylabel('Cumulative |Δu|');
+title('Cumulative Control Variation (TV)');
+
+subplot(3,2,4);
+plot(t, u_energy,'LineWidth',1.5); grid on;
+xlabel('Time [s]'); ylabel('\Sigma u^2');
+title('Instantaneous Control Energy');
+
+subplot(3,2,5);
+plot(t_d2u, d2u'); grid on;
+xlabel('Time [s]'); ylabel('\Delta^2 u');
+title('Jerk (Second Difference of Control)');
+legend('d2u1','d2u2','d2u3','d2u4');
+
+subplot(3,2,6);
+plot(f, P1,'LineWidth',1.5); grid on;
+xlabel('Frequency [Hz]'); ylabel('|U1(f)|');
+title('Frequency Spectrum of u1');
+
+sgtitle('Comprehensive Control Analysis (u, Δu, TV, Energy, Jerk, FFT)');
+
 
 
 
