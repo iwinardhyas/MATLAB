@@ -20,11 +20,17 @@ Izz = 8.81e-3;
 assert(isnumeric(m) && isscalar(m), 'Mass m must be numeric scalar');
 assert(isnumeric(g) && isscalar(g), 'Gravity g must be numeric scalar');
 
+% Skenario Perubahan Payload (untuk simulasi "dunia nyata")
+actual_mass_at_start = m;
+added_payload_mass = 1.0; % kg (payload tambahan)
+time_of_payload_change = 6.0; % detik (waktu penambahan payload)
+actual_changed_mass = actual_mass_at_start + added_payload_mass;
+
 % Dimensi State dan Input
 nx = 12; % [x,y,z,phi,theta,psi,vx_inertial,vy_inertial,vz_inertial,p,q,r]
 nu = 4;  % [f1, f2, f3, f4]
 
-M = 2;
+M = 1;
 % Horizon Prediksi NMPC
 N = 10; % Kurangi horizon untuk konvergensi lebih baik
 dt = 0.1; % Time step lebih kecil
@@ -149,7 +155,7 @@ ubg = [ubg; zeros(nx,1)];
 % --- Generate warm start untuk propagasi awal ---
 arg_w0 = [];
 % x_guess = zeros(nx,1); 
-x_guess = QuadrotorReferenceTrajectory6(0);
+x_guess = QuadrotorReferenceTrajectory4(0);
 
 % 1. Initial state
 arg_w0 = [arg_w0; x_guess];
@@ -286,16 +292,20 @@ N_sim = T_sim / dt;
 history_x = zeros(nx, N_sim + 1);
 history_u = zeros(nu, N_sim);
 history_x_ref = zeros(nx, N_sim + 1);
+history_actual_mass = zeros(1, N_sim + 1);
 
 % Initial state: start closer to first reference point
-x_ref_initial = QuadrotorReferenceTrajectory6(0);
+x_ref_initial = QuadrotorReferenceTrajectory4(0);
 current_state = zeros(nx, 1);
 current_state(1:3) = x_ref_initial(1:3); % Start at reference position
 current_state(3) = max(current_state(3), 0.0); % Ensure minimum altitude
 history_x(:, 1) = current_state;
+current_actual_mass = actual_mass_at_start;
+history_actual_mass(1) = current_actual_mass;
 
 % Initialize warm start
 % arg_w0 = w0;
+arg_w0 = generate_initial_guess(nx, nu, N, current_actual_mass);
 
 fprintf('Starting NMPC simulation...\n');
 fprintf('Initial state: [%.3f, %.3f, %.3f]\n', current_state(1:3)');
@@ -303,8 +313,17 @@ fprintf('Initial state: [%.3f, %.3f, %.3f]\n', current_state(1:3)');
 for i = 1:N_sim
     current_time = (i-1) * dt;
     
+    if current_time >= time_of_payload_change && current_actual_mass == actual_mass_at_start
+        current_actual_mass = actual_changed_mass;
+        fprintf('--- Perubahan Payload! Massa drone sekarang: %.2f kg pada t=%.2f s ---\n', current_actual_mass, current_time);
+        thrust_hover_new = current_actual_mass * g / 4;
+        arg_w0 = update_guess_for_mass_change(arg_w0, nx, nu, N, thrust_hover_new);
+    end
+    history_actual_mass(i+1) = current_actual_mass; % Log massa aktual
+
+    
     % Get reference trajectory
-    x_ref_at_current_time = QuadrotorReferenceTrajectory6(current_time);
+    x_ref_at_current_time = QuadrotorReferenceTrajectory4(current_time);
     history_x_ref(:, i) = x_ref_at_current_time;
     
     error_pos = norm(current_state(1:3) - x_ref_at_current_time(1:3));
@@ -313,7 +332,7 @@ for i = 1:N_sim
 
     
     % Build parameter vector
-    X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory6);
+    X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory4);
     actual_params = [current_state; reshape(X_ref_horizon, [], 1);r_rate_param];
     
     % Tampilkan nilai R_rate pada setiap langkah
@@ -351,14 +370,13 @@ for i = 1:N_sim
         opt_w = arg_w0; % Keep previous solution for warm start
     end
     
-    history_u(:, i) = u_optimal;
-    
     % Simulate system forward
-    current_state = full(F_discrete(current_state, u_optimal));
+    current_state = full(F_discrete(current_state, u_optimal, current_actual_mass));
     history_x(:, i+1) = current_state;
     
     % Update warm start
-    arg_w0 = shift_solution(opt_w, nx, nu, N, M);
+%     arg_w0 = shift_solution(opt_w, nx, nu, N, M);
+    arg_w0 = shift_solution_simple(opt_w, nx, nu, N, current_actual_mass);
     
     % Progress display with error analysis
     if mod(i, 20) == 0
@@ -379,7 +397,7 @@ for i = 1:N_sim
 end
 
 % Final reference point
-history_x_ref(:, N_sim + 1) = QuadrotorReferenceTrajectory6(T_sim);
+history_x_ref(:, N_sim + 1) = QuadrotorReferenceTrajectory4(T_sim);
 
 results.history_x = history_x;
 results.history_u = history_u;
@@ -474,8 +492,6 @@ function X_ref_horizon = generate_reference_horizon(t0, N, dt, ref_fun)
     end
 end
 
-
-
 function R_x = rotx(t)
     R_x = [1, 0, 0; 0, cos(t), -sin(t); 0, sin(t), cos(t)];
 end
@@ -500,4 +516,55 @@ function r_rate_value = calculateDynamicRRate(tracking_error, max_error_threshol
     % Misalnya, fungsi kuadratik:
     r_rate_value = 0.2 + 1.9 * (normalized_error)^10; % Nilai r_rate akan berkisar dari 0.1 hingga 1.0
 %     r_rate_value = 0.1 + exp(5*normalized_error - 5); % Contoh saja, sesuaikan sesuai kebutuhan
+end
+
+% Fungsi untuk generate warm start
+function w0 = generate_initial_guess(nx, nu, N, mass_current)
+    w0 = [];
+    thrust_hover_current = mass_current * 9.81 / 4;
+    
+    % Initial state (hovering)
+    x_guess = zeros(nx, 1);
+    x_guess(3) = 1.0; % altitude 1m
+    w0 = [w0; x_guess];
+    
+    % States dan controls sepanjang horizon
+    for k = 1:N
+        w0 = [w0; thrust_hover_current*ones(nu,1)]; % Control
+        w0 = [w0; x_guess]; % Next state
+    end
+end
+
+function w_updated = update_guess_for_mass_change(w_old, nx, nu, N, thrust_hover_new)
+    % Update initial guess after mass change
+    w_updated = w_old;
+    offset = nx; % Skip initial state
+    
+    for k = 1:N
+        % Update control guess to new hover thrust
+        w_updated(offset+1:offset+nu) = thrust_hover_new;
+        offset = offset + nu + nx;
+    end
+end
+
+function w_shifted = shift_solution_simple(w_opt, nx, nu, N, mass_current)
+    % Simplified solution shifting
+    thrust_hover = mass_current * 9.81 / 4;
+    
+    % Extract current solution structure
+    w_shifted = [];
+    offset = nx; % Skip initial state
+    
+    % Shift controls and states
+    for k = 1:N-1
+        u_k = w_opt(offset+1:offset+nu);
+        offset = offset + nu;
+        x_k = w_opt(offset+1:offset+nx);
+        offset = offset + nx;
+        
+        w_shifted = [w_shifted; u_k; x_k];
+    end
+    
+    % Add final control and state (duplicate last or use hover)
+    w_shifted = [w_shifted; thrust_hover*ones(nu,1); w_opt(end-nx+1:end)];
 end
