@@ -1,5 +1,5 @@
 function [ xdesired ] = QuadrotorReferenceTrajectory6(t)
-    trajectory_type = 'combined_test';
+    trajectory_type = 'lurus';
     
     xdesired = zeros(12, 1);
     
@@ -81,7 +81,7 @@ function [ xdesired ] = QuadrotorReferenceTrajectory6(t)
 
             % Posisi: Gabungan sinus dan step
             x = forward_speed * t;
-            y = amplitude * sin(2 * pi * frequency * t);
+            y = amplitude * sin(2 * pi * frequency * t)+2;
             if t < 3
                 z = 1.0;
             else
@@ -115,5 +115,58 @@ function [ xdesired ] = QuadrotorReferenceTrajectory6(t)
             psidot = 0; 
 
             xdesired = [x; y; z; phi; theta; psi; xdot; ydot; zdot; phidot; thetadot; psidot];
+            
+        case 'lurus'
+        % === PARAMETER TRAJEKTORI ===
+        p_start = [0; 0; 0];
+        p_goal = [10; 7; 0];
+        T_total = 10; % Waktu total untuk mencapai tujuan (dalam detik)
+
+        % === POSISI ===
+        if t < T_total
+            alpha = t / T_total;
+            pos = (1 - alpha) * p_start + alpha * p_goal;
+        else
+            % Jika waktu sudah melewati T_total, drone tetap di posisi tujuan
+            pos = p_goal;
+        end
+
+        % === KECEPATAN ===
+        if t < T_total
+            % Kecepatan konstan selama perjalanan
+            vel = (p_goal - p_start) / T_total;
+        else
+            % Jika sudah mencapai tujuan, kecepatan menjadi nol
+            vel = [0; 0; 0];
+        end
+
+        % === ORIENTASI ===
+        % Roll (phi) dan Pitch (theta) diasumsikan nol untuk jalur datar
+        phi = 0;
+        theta = 0;
+        % Yaw (psi) menghadap ke arah kecepatan
+        yaw = atan2(vel(2), vel(1));
+
+        % === KECEPATAN SUDUT ===
+        % Kecepatan sudut diasumsikan nol untuk jalur lurus
+        phidot = 0;
+        thetadot = 0;
+        psidot = 0;
+
+        % === OUTPUT 12 STATE ===
+        % x, y, z, phi, theta, psi, xdot, ydot, zdot, phidot, thetadot, psidot
+        xdesired = [pos; phi; theta; yaw; vel; phidot; thetadot; psidot];
+    end
+end
+
+function pos = QuadrotorReferenceTrajectory6_pos(t, p_start, p_waypt, p_goal, T1, T2)
+    if t < T1
+        alpha = t/T1;
+        pos = (1-alpha)*p_start + alpha*p_waypt;
+    elseif t < T2
+        alpha = (t-T1)/(T2-T1);
+        pos = (1-alpha)*p_waypt + alpha*p_goal;
+    else
+        pos = p_goal;
     end
 end

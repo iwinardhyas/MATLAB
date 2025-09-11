@@ -153,3 +153,37 @@ hold off;
 % grid on;
 % drone_Animation(time_vector,x_actual,y_actual,z_actual,history_x(4, :),history_x(5, :),history_x(6, :))
 % grid off;
+
+figure; hold on; grid on;
+plot3(history_x(1,:), history_x(2,:), history_x(3,:), 'b-', 'LineWidth', 1.5); % jalur drone
+plot3(history_x_ref(1,:), history_x_ref(2,:), history_x_ref(3,:), 'r--');     % jalur referensi asli
+
+% plot obstacle
+[xx,yy,zz] = sphere(20);
+for j=1:size(obs_center,2)
+    surf(obs_center(1,j) + obs_radius(j)*xx, ...
+         obs_center(2,j) + obs_radius(j)*yy, ...
+         obs_center(3,j) + obs_radius(j)*zz, ...
+         'FaceAlpha',0.3,'EdgeColor','none','FaceColor','g');
+end
+
+xlabel('X'); ylabel('Y'); zlabel('Z');
+legend('Drone path','Reference path','Obstacles');
+title('Trajektori Drone dengan APF + NMPC');
+
+d_min_log = zeros(1,N_sim);
+for i=1:N_sim
+    p = history_x(1:3,i);
+    d_all = vecnorm(p - obs_center,2,1) - obs_radius;
+    d_min_log(i) = min(d_all);
+end
+
+figure; plot((0:N_sim-1)*dt, d_min_log, 'LineWidth',1.5);
+xlabel('Time [s]'); ylabel('Min distance to obstacle [m]');
+title('Jarak Minimum Drone ke Obstacle');
+grid on;
+
+figure; plot3(v_ref_history(1,:), v_ref_history(2,:), v_ref_history(3,:));
+xlabel('v_x'); ylabel('v_y'); zlabel('v_z');
+title('Arah koreksi dari APF');
+grid on;
