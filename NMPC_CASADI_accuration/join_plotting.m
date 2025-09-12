@@ -36,6 +36,31 @@ thrust_ref = mean(thrust_single); % approx hover thrust
 err_thrust_single = thrust_single - thrust_ref;
 err_thrust_multi  = thrust_multi - thrust_ref;
 
+% ======================================
+% Delta U (smoothness control effort)
+% ======================================
+deltaU_single = diff(results_single.history_u,1,2); % diff sepanjang waktu
+deltaU_multi  = diff(results_multi.history_u,1,2);
+
+norm_deltaU_single = vecnorm(deltaU_single); % norma tiap step
+norm_deltaU_multi  = vecnorm(deltaU_multi);
+
+% ======================================
+% Error tracking posisi (xyz)
+% ======================================
+xyz_single = results_single.history_x(1:3,:); % (x,y,z) actual
+xyz_multi  = results_multi.history_x(1:3,:);
+
+xyz_ref = results_single.history_ref(1:3,:);  % referensi (asumsi sama)
+err_pos_single = vecnorm(xyz_single - xyz_ref);
+err_pos_multi  = vecnorm(xyz_multi - xyz_ref);
+
+% ======================================
+% Plotting
+% ======================================
+t_single = results_single.t;
+t_multi  = results_multi.t;
+
 % --- Plot ---
 figure;
 
@@ -81,3 +106,29 @@ plot(t_u_multi,err_thrust_multi,'r--','LineWidth',1.2);
 ylabel('Thrust err'); xlabel('Time [s]');
 
 sgtitle('Tracking Error Comparison (Single vs Multiple Shooting)');
+
+figure;
+
+subplot(3,1,1);
+plot(t_single, err_thrust_single, 'b','LineWidth',1.2); hold on;
+plot(t_multi, err_thrust_multi, 'r--','LineWidth',1.2);
+yline(0,'k--');
+xlabel('Time [s]'); ylabel('Thrust Error [N]');
+title('Thrust Error vs Hover');
+legend('Single penalty','Multi penalty');
+
+subplot(3,1,2);
+plot(t_single(2:end), norm_deltaU_single, 'b','LineWidth',1.2); hold on;
+plot(t_multi(2:end), norm_deltaU_multi, 'r--','LineWidth',1.2);
+xlabel('Time [s]'); ylabel('||ΔU||');
+title('Control Smoothness (Delta U)');
+legend('Single penalty','Multi penalty');
+
+subplot(3,1,3);
+plot(t_single, err_pos_single, 'b','LineWidth',1.2); hold on;
+plot(t_multi, err_pos_multi, 'r--','LineWidth',1.2);
+xlabel('Time [s]'); ylabel('||pos error|| [m]');
+title('Position Tracking Error');
+legend('Single penalty','Multi penalty');
+
+sgtitle('Comparison of Penalty Methods in NMPC');
