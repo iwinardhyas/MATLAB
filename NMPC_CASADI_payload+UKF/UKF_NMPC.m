@@ -1,0 +1,570 @@
+% 1. Setup CasADi
+% addpath('/home/zee/Erwin/MATLAB/casadi-3.7.1-linux64-matlab2018b');
+addpath('C:\Users\DELL\Documents\MATLAB\casadi-3.7.0-windows64-matlab2018b');
+import casadi.*
+
+% Clear workspace to avoid variable conflicts
+clear variables
+clear x u
+clc
+
+%% 2. Definisikan Parameter Sistem
+m = 0.5;
+g = 9.81;
+l = 0.25;
+Ixx = 4.85e-3;
+Iyy = 4.85e-3;
+Izz = 8.81e-3;
+
+% Pastikan semua parameter adalah scalar numeric
+assert(isnumeric(m) && isscalar(m), 'Mass m must be numeric scalar');
+assert(isnumeric(g) && isscalar(g), 'Gravity g must be numeric scalar');
+
+% Skenario Perubahan Payload (untuk simulasi "dunia nyata")
+actual_mass_at_start = m;
+added_payload_mass = 1.0; % kg (payload tambahan)
+time_of_payload_change = 6.0; % detik (waktu penambahan payload)
+actual_changed_mass = actual_mass_at_start + added_payload_mass;
+
+% Dimensi State dan Input
+nx = 12; % [x,y,z,phi,theta,psi,vx_inertial,vy_inertial,vz_inertial,p,q,r]
+nu = 4;  % [f1, f2, f3, f4]
+
+M = 1;
+% Horizon Prediksi NMPC
+N = 10; % Kurangi horizon untuk konvergensi lebih baik
+dt = 0.1; % Time step lebih kecil
+dt_sub = dt / M;  % pastikan M sudah didefinisikan
+
+% Hovering thrust per motor (pastikan numeric)
+thrust_hover_value = double(m * g / 4);  % Force as double
+fprintf('Hover thrust per motor: %.3f N\n', thrust_hover_value);
+
+%% 3. Definisikan Model Dinamika Quadrotor yang Konsisten
+% Input simbolik
+x = MX.sym('x', nx, 1); % State
+u = MX.sym('u', nu, 1); % Input (gaya dorong motor)
+
+% Ekstrak state
+px = x(1); py = x(2); pz = x(3);
+phi = x(4); theta = x(5); psi = x(6);
+vx_inertial = x(7); vy_inertial = x(8); vz_inertial = x(9);
+p = x(10); q = x(11); r = x(12);
+
+% Konversi thrust motor ke total force dan torque
+F_total = sum(u);
+tau_phi = l * (u(2) - u(4));
+tau_theta = l * (u(3) - u(1));
+tau_psi = 0.005 * (-u(1) + u(2) - u(3) + u(4));
+
+% Rotation matrices
+R_b_i = rotz(psi) * roty(theta) * rotx(phi);
+
+% Thrust dalam body frame (mengarah ke atas)
+thrust_body = [0; 0; F_total];
+% Transform ke inertial frame
+thrust_inertial = R_b_i * thrust_body;
+
+% Percepatan dalam inertial frame
+ax_inertial = thrust_inertial(1) / m;
+ay_inertial = thrust_inertial(2) / m;
+az_inertial = thrust_inertial(3) / m - g;
+
+% Persamaan Euler untuk angular acceleration
+p_dot = (tau_phi + (Iyy - Izz) * q * r) / Ixx;
+q_dot = (tau_theta + (Izz - Ixx) * p * r) / Iyy;
+r_dot = (tau_psi + (Ixx - Iyy) * p * q) / Izz;
+
+% Kinematic equations untuk orientasi
+phi_dot = p + q*sin(phi)*tan(theta) + r*cos(phi)*tan(theta);
+theta_dot = q*cos(phi) - r*sin(phi);
+psi_dot = q*sin(phi)/cos(theta) + r*cos(phi)/cos(theta);
+
+% State derivative
+xdot = [vx_inertial; vy_inertial; vz_inertial; ... % Position rates
+        phi_dot; theta_dot; psi_dot; ... % Orientation rates
+        ax_inertial; ay_inertial; az_inertial; ... % Velocity rates (inertial)
+        p_dot; q_dot; r_dot]; % Angular velocity rates
+
+% Fungsi dinamika
+f = Function('f', {x, u}, {xdot});
+
+% Diskretisasi RK4
+X = MX.sym('X', nx, 1);
+U = MX.sym('U', nu, 1);
+XDOT = f(X, U);
+k1 = XDOT;
+k2 = f(X + dt/2*k1, U);
+k3 = f(X + dt/2*k2, U);
+k4 = f(X + dt*k3, U);
+X_next = X + dt/6*(k1 + 2*k2 + 2*k3 + k4);
+F_discrete = Function('F_discrete', {X, U}, {X_next});
+
+x_next_sub = X + dt_sub/6 * (k1 + 2*k2 + 2*k3 + k4);
+F_sub = Function('F_sub', {X, U}, {x_next_sub});
+
+%% 4. Setup NMPC Problem
+w = {};
+J = 0;
+g = {};
+lbw = []; ubw = []; w0 = [];
+lbg = []; ubg = [];
+
+X_vars = cell(N+1, 1);
+U_vars = cell(N, 1);
+X_sub_vars = cell(N, M-1);  % State intermediate dalam interval multiple shooting
+
+% Parameter vector: [current_state; reference_state]
+n_params = nx + nx*(N+1)+nu;  % [x0; xref_0; xref_1; ... xref_N]
+all_params_sym = MX.sym('all_params', n_params, 1);
+X_initial_param = all_params_sym(1:nx);
+
+% Pisahkan vektor referensi dan parameter R_rate
+X_ref_param_start = nx + 1;
+X_ref_param_end = nx + nx*(N+1);
+R_rate_param_start = X_ref_param_end + 1;
+
+% X_ref_param = all_params_sym(nx+1:end);  % Hasil MX, bukan cell
+X_ref_param = all_params_sym(X_ref_param_start:X_ref_param_end);
+R_rate_param = all_params_sym(R_rate_param_start:end);
+
+X_ref_params = cell(N+1, 1);
+% for k = 0:N
+%     start_idx = nx + nx*k + 1;
+%     end_idx = nx + nx*(k+1);
+%     X_ref_params{k+1} = all_params_sym(start_idx:end_idx);
+% end
+for k = 0:N
+    start_idx = 1 + nx*k;
+    end_idx = nx*(k+1);
+    X_ref_params{k+1} = X_ref_param(start_idx:end_idx);
+end
+
+% Initial state variable
+X_vars{1} = MX.sym('X_0', nx, 1);
+w = {w{:}, X_vars{1}};
+lbw = [lbw; -inf*ones(nx,1)];
+ubw = [ubw; inf*ones(nx,1)];
+% w0 = [w0; zeros(nx,1)];
+
+% Initial state constraint
+g = {g{:}, X_vars{1} - X_initial_param};
+lbg = [lbg; zeros(nx,1)];
+ubg = [ubg; zeros(nx,1)];
+
+% --- Generate warm start untuk propagasi awal ---
+arg_w0 = [];
+% x_guess = zeros(nx,1); 
+x_guess = QuadrotorReferenceTrajectory4(0);
+
+% 1. Initial state
+arg_w0 = [arg_w0; x_guess];
+
+% 2. Loop sepanjang horizon
+for k = 1:N
+    % Control guess (hover)
+    arg_w0 = [arg_w0; thrust_hover_value*ones(nu,1)];
+    
+    % Intermediate states (multiple shooting)
+    for m = 1:M-1
+        arg_w0 = [arg_w0; x_guess];  % bisa pakai interpolasi jika mau
+    end
+    
+    % Next state guess
+    arg_w0 = [arg_w0; x_guess];
+end
+
+
+% Main horizon loop
+for k = 0:N-1
+    % Control variables
+    U_vars{k+1} = MX.sym(['U_' num2str(k)], nu, 1);
+    w = {w{:}, U_vars{k+1}};
+    lbw = [lbw; 0.2*thrust_hover_value*ones(nu,1)]; % Min 10% hover thrust
+    ubw = [ubw; 3.0*thrust_hover_value*ones(nu,1)];   % Max 300% hover thrust
+    arg_w0 = [arg_w0; thrust_hover_value*ones(nu,1)]; % Initialize at hover
+    
+    % Multiple Shooting Integration
+    X_current = X_vars{k+1};
+    for m = 1:M-1
+        % Intermediate state
+        X_sub_vars{k+1, m} = MX.sym(['X_' num2str(k) '_sub_' num2str(m)], nx, 1);
+        w = {w{:}, X_sub_vars{k+1, m}};
+        lbw = [lbw; -inf*ones(nx,1)];
+        ubw = [ubw;  inf*ones(nx,1)];
+        
+        % Warm start dari propagasi dinamika
+        x_guess = full(F_sub(x_guess, thrust_hover_value*ones(nu,1)));
+        arg_w0 = [arg_w0; x_guess];
+        
+        % Constraint: integrasi sub-step
+        X_predicted = F_sub(X_current, U_vars{k+1});
+        g = {g{:}, X_predicted - X_sub_vars{k+1, m}};
+        lbg = [lbg; zeros(nx,1)];
+        ubg = [ubg; zeros(nx,1)];
+        
+        % Update state untuk sub-step berikutnya
+        X_current = X_sub_vars{k+1, m};
+    end
+    
+    % Next state variables
+    X_vars{k+2} = MX.sym(['X_' num2str(k+1)], nx, 1);
+    w = {w{:}, X_vars{k+2}};
+    lbw = [lbw; -inf*ones(nx,1)];
+    ubw = [ubw; inf*ones(nx,1)];
+%     w0 = [w0; zeros(nx,1)];
+    x_guess = full(F_discrete(x_guess, thrust_hover_value*ones(nu,1)));
+    arg_w0 = [arg_w0; x_guess];
+    
+      % Constraint: integrasi akhir interval
+    X_predicted_final = F_sub(X_current, U_vars{k+1});
+    g = {g{:}, X_predicted_final - X_vars{k+2}};
+    lbg = [lbg; zeros(nx,1)];
+    ubg = [ubg; zeros(nx,1)];
+    
+    % Cost function - CONSERVATIVE tuning untuk stabilitas
+    % Position tracking dengan weight yang reasonable
+%     Q = diag([200, 200, 500, ... % px, py, pz
+%                    80, 80, 40, ...   % phi, theta, psi
+%                    20, 20, 20, ...      % vx, vy, vz
+%                    1, 1, 1]);  % p, q, r
+    Q = diag([10, 300, 400, ... % px, py, pz
+                   1, 10, 10, ...   % phi, theta, psi
+                   1, 1, 1, ...      % vx, vy, vz
+                   1, 1, 1]);  % p, q, r
+    R = diag([0.5, 0.5, 0.5, 0.5]); % control
+    
+    J = J + (X_vars{k+1} - X_ref_params{k+1})' * Q * (X_vars{k+1} - X_ref_params{k+1}) + ...
+            U_vars{k+1}' * R * U_vars{k+1};
+
+      
+    for m = 1:M-1
+        Q_sub = 0.1 * Q;
+        alpha = m / M;
+        X_ref_interp = (1-alpha) * X_ref_params{k+1} + alpha * X_ref_params{k+2};
+        J = J + (X_sub_vars{k+1, m} - X_ref_interp)' * Q_sub * (X_sub_vars{k+1, m} - X_ref_interp);
+    end
+    
+    % Input rate penalty
+    if k > 0
+        R_rate = 1 * eye(nu);
+%         tracking_error = norm(X_vars{k+1}(1:3) - X_ref_params{k+1}(1:3)); % error posisi (x,y,z)
+%         adapt_factor = 1 + tracking_error;  % semakin besar error, semakin longgar
+%         R_rate = (0.1 / adapt_factor) * eye(nu);
+%         R_rate = rate_penalty_param * eye(nu);
+%         R_rate = diag(R_rate_param); % Jadikan diagonal
+
+        J = J + (U_vars{k+1} - U_vars{k})' * R_rate * (U_vars{k+1} - U_vars{k});
+    end
+
+end
+
+% Terminal cost
+% Qf = 3 * Q; % Higher terminal weight
+Qf = diag([100, 100, 100, ... % px, py, pz
+                   10, 10, 10, ...   % phi, theta, psi
+                   1, 1, 1, ...      % vx, vy, vz
+                   1, 1, 1]);  % p, q, r
+J = J + (X_vars{N+1} - X_ref_params{N+1})' * Qf * (X_vars{N+1} - X_ref_params{N+1});
+
+
+% NLP problem
+nlp = struct('f', J, 'x', vertcat(w{:}), 'g', vertcat(g{:}), 'p', all_params_sym);
+
+% Solver options - lebih konservatif untuk stabilitas
+solver_options = struct;
+solver_options.print_time = false;
+solver_options.ipopt.max_iter = 5;
+solver_options.ipopt.tol = 1e-2;
+solver_options.ipopt.acceptable_tol = 1e-1;
+solver_options.ipopt.linear_solver = 'mumps';
+solver_options.ipopt.hessian_approximation = 'exact';
+solver_options.ipopt.print_level = 0;
+solver_options.ipopt.mu_strategy = 'adaptive';
+
+solver = nlpsol('solver', 'ipopt', nlp, solver_options);
+% solver.generate('nmpc_solver.c');
+% mex nmpc_solver.c -largeArrayDims -lipopt -lmumps
+
+%% 5. Simulation Loop
+T_sim = 10;
+N_sim = T_sim / dt;
+history_x = zeros(nx, N_sim + 1);
+history_u = zeros(nu, N_sim);
+history_x_ref = zeros(nx, N_sim + 1);
+history_actual_mass = zeros(1, N_sim + 1);
+
+% Initial state: start closer to first reference point
+x_ref_initial = QuadrotorReferenceTrajectory4(0);
+current_state = zeros(nx, 1);
+current_state(1:3) = x_ref_initial(1:3); % Start at reference position
+current_state(3) = max(current_state(3), 0.0); % Ensure minimum altitude
+history_x(:, 1) = current_state;
+current_actual_mass = actual_mass_at_start;
+history_actual_mass(1) = current_actual_mass;
+
+% Initialize warm start
+% arg_w0 = w0;
+arg_w0 = generate_initial_guess(nx, nu, N, current_actual_mass);
+
+fprintf('Starting NMPC simulation...\n');
+fprintf('Initial state: [%.3f, %.3f, %.3f]\n', current_state(1:3)');
+
+for i = 1:N_sim
+    current_time = (i-1) * dt;
+    
+    if current_time >= time_of_payload_change && current_actual_mass == actual_mass_at_start
+        current_actual_mass = actual_changed_mass;
+        fprintf('--- Perubahan Payload! Massa drone sekarang: %.2f kg pada t=%.2f s ---\n', current_actual_mass, current_time);
+        thrust_hover_new = current_actual_mass * g / 4;
+        arg_w0 = update_guess_for_mass_change(arg_w0, nx, nu, N, thrust_hover_new);
+    end
+    history_actual_mass(i+1) = current_actual_mass; % Log massa aktual
+
+    
+    % Get reference trajectory
+    x_ref_at_current_time = QuadrotorReferenceTrajectory4(current_time);
+    history_x_ref(:, i) = x_ref_at_current_time;
+    
+    error_pos = norm(current_state(1:3) - x_ref_at_current_time(1:3));
+    r_rate_scalar = calculateDynamicRRate(error_pos, 0.3);
+    r_rate_param = r_rate_scalar * ones(nu,1);
+
+    
+    % Build parameter vector
+    X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory4);
+    actual_params = [current_state; reshape(X_ref_horizon, [], 1);r_rate_param];
+    
+    % Tampilkan nilai R_rate pada setiap langkah
+    fprintf('Step %d: Dynamic R_rate scalar = %.4f\n', i, r_rate_scalar);
+    
+    % Solve NMPC
+    try
+        tic;
+        sol = solver('x0', arg_w0, 'lbx', lbw, 'ubx', ubw, ...
+                     'lbg', lbg, 'ubg', ubg, 'p', actual_params);
+        solver_time = toc; % catat waktu solver
+        fprintf('Step %d: Solver time = %.4f s (dt = %.4f s)\n', i, solver_time, dt);
+        solver_times(i) = solver_time;
+        
+        % Extract optimal control
+        opt_w = full(sol.x);
+        u_optimal = opt_w(nx + 1 : nx + nu);
+        
+        % Check solver status (compatible with different CasADi versions)
+        try
+            if isfield(sol, 'stats') && isfield(sol.stats, 'return_status')
+                status = char(sol.stats.return_status);
+                if ~strcmp(status, 'Solve_Succeeded')
+                    fprintf('Warning: Solver status at step %d: %s\n', i, status);
+                end
+            end
+        catch
+            % Ignore status check if not available
+        end
+        
+    catch ME
+        fprintf('Solver failed at step %d: %s\n', i, ME.message);
+        % Use hover thrust as fallback
+        u_optimal = thrust_hover_value * ones(nu, 1);
+        opt_w = arg_w0; % Keep previous solution for warm start
+    end
+    
+    % Simulate system forward
+    current_state = full(F_discrete(current_state, u_optimal, current_actual_mass));
+    history_x(:, i+1) = current_state;
+    
+    % Update warm start
+%     arg_w0 = shift_solution(opt_w, nx, nu, N, M);
+    arg_w0 = shift_solution_simple(opt_w, nx, nu, N, current_actual_mass);
+    
+    % Progress display with error analysis
+    if mod(i, 20) == 0
+        pos_error = norm(current_state(1:3) - x_ref_at_current_time(1:3));
+        x_error = norm(current_state(1,:) - x_ref_at_current_time(1,:));
+        y_error = norm(current_state(2,:) - x_ref_at_current_time(2,:));
+        z_error = norm(current_state(3,:) - x_ref_at_current_time(3,:));
+        phi_error = norm(current_state(4,:) - x_ref_at_current_time(4,:));
+        theta_error = norm(current_state(5,:) - x_ref_at_current_time(5,:));
+        psi_error = norm(current_state(6,:) - x_ref_at_current_time(6,:));
+        fprintf('Step %d/%d, Pos: [%.2f, %.2f, %.2f], Ref: [%.2f, %.2f, %.2f], Error: %.2f\n', ...
+                i, N_sim, current_state(1), current_state(2), current_state(3), ...
+                x_ref_at_current_time(1), x_ref_at_current_time(2), x_ref_at_current_time(3), pos_error);
+        fprintf('           Thrust: [%.2f, %.2f, %.2f, %.2f] N\n', u_optimal');
+        fprintf('Error_x: %.2f,Error_y: %.2f,Error_z: %.2f,Error_phi: %.2f,Error_theta: %.2f,Error_psi: %.2f\n', ...
+            x_error,y_error,z_error,phi_error,theta_error,psi_error);
+    end
+end
+
+% Final reference point
+history_x_ref(:, N_sim + 1) = QuadrotorReferenceTrajectory4(T_sim);
+
+results.history_x = history_x;
+results.history_u = history_u;
+results.history_x_ref = history_x_ref;
+results.dt = dt;
+results.method = 'MultiShooting';
+save('sim_multi.mat','results');
+
+
+fprintf('Simulation completed!\n');
+fprintf('Rata-rata waktu solver: %.4f s, Maksimum: %.4f s\n', ...
+        mean(solver_times), max(solver_times));
+%% Tracking Error
+pos_error = history_x(1:3,:) - history_x_ref(1:3,:);   % error posisi
+tracking_error = sqrt(sum(pos_error.^2,1));           % norm error tiap step
+mean_tracking_error = mean(tracking_error);           % rata-rata error
+
+%% Control Effort (energi)
+control_effort = sum(sum(history_u.^2)) * dt;          % integral u^2
+
+%% Smoothness (perubahan input)
+du = diff(history_u,1,2);                              % delta u
+smoothness = sum(sum(du.^2)) * dt;
+
+fprintf('Mean tracking error = %.4f m\n', mean_tracking_error);
+fprintf('Total control effort = %.4f\n', control_effort);
+fprintf('Smoothness index = %.4f\n', smoothness);
+
+
+
+% Plot results if function exists
+if exist('PlotTrajectory', 'file') == 2
+    PlotTrajectory;
+end
+
+%% Support Functions
+function w_shifted = shift_solution(w_opt, nx, nu, N, M)
+    % Versi minimal: otomatis ambil x_last dan u_last dari w_opt
+    
+    offset = 0;
+    X_main = cell(N+1, 1);
+    U_all = cell(N, 1);
+    X_sub = cell(N, M-1);
+
+    % Ambil X0
+    X_main{1} = w_opt(offset+1 : offset+nx);
+    offset = offset + nx;
+
+    for k = 1:N
+        U_all{k} = w_opt(offset+1 : offset+nu);
+        offset = offset + nu;
+
+        for m = 1:M-1
+            X_sub{k,m} = w_opt(offset+1 : offset+nx);
+            offset = offset + nx;
+        end
+
+        X_main{k+1} = w_opt(offset+1 : offset+nx);
+        offset = offset + nx;
+    end
+
+    % Ambil tebakan terakhir otomatis
+    x_last = X_main{end};
+    u_last = U_all{end};
+
+    % Bangun warm start
+    w_shifted = [];
+    w_shifted = [w_shifted; X_main{2}];
+
+    for k = 2:N
+        w_shifted = [w_shifted; U_all{k}];
+        for m = 1:M-1
+            w_shifted = [w_shifted; X_sub{k,m}];
+        end
+        w_shifted = [w_shifted; X_main{k+1}];
+    end
+
+    % Isi step terakhir
+    w_shifted = [w_shifted; u_last];
+    for m = 1:M-1
+        w_shifted = [w_shifted; x_last];
+    end
+    w_shifted = [w_shifted; x_last];
+end
+
+function X_ref_horizon = generate_reference_horizon(t0, N, dt, ref_fun)
+    nx = 12;
+    X_ref_horizon = zeros(nx, N+1);
+    for k = 0:N
+        tk = t0 + k*dt;
+        X_ref_horizon(:, k+1) = ref_fun(tk);
+    end
+end
+
+function R_x = rotx(t)
+    R_x = [1, 0, 0; 0, cos(t), -sin(t); 0, sin(t), cos(t)];
+end
+
+function R_y = roty(t)
+    R_y = [cos(t), 0, sin(t); 0, 1, 0; -sin(t), 0, cos(t)];
+end
+
+function R_z = rotz(t)
+    R_z = [cos(t), -sin(t), 0; sin(t), cos(t), 0; 0, 0, 1];
+end
+
+function r_rate_value = calculateDynamicRRate(tracking_error, max_error_threshold)
+    % Tingkatkan penalti laju input ketika tracking error (misalnya posisi) besar.
+    % Ini akan membuat kontroler lebih agresif untuk mengurangi error,
+    % tetapi tetap menghukum perubahan input yang terlalu tiba-tiba.
+    
+    % Normalisasi error
+    normalized_error = min(abs(tracking_error) / max_error_threshold, 1.0);
+    
+    % Gunakan fungsi nonlinier untuk mendapatkan nilai bobot
+    % Misalnya, fungsi kuadratik:
+    r_rate_value = 0.2 + 1.9 * (normalized_error)^10; % Nilai r_rate akan berkisar dari 0.1 hingga 1.0
+%     r_rate_value = 0.1 + exp(5*normalized_error - 5); % Contoh saja, sesuaikan sesuai kebutuhan
+end
+
+% Fungsi untuk generate warm start
+function w0 = generate_initial_guess(nx, nu, N, mass_current)
+    w0 = [];
+    thrust_hover_current = mass_current * 9.81 / 4;
+    
+    % Initial state (hovering)
+    x_guess = zeros(nx, 1);
+    x_guess(3) = 1.0; % altitude 1m
+    w0 = [w0; x_guess];
+    
+    % States dan controls sepanjang horizon
+    for k = 1:N
+        w0 = [w0; thrust_hover_current*ones(nu,1)]; % Control
+        w0 = [w0; x_guess]; % Next state
+    end
+end
+
+function w_updated = update_guess_for_mass_change(w_old, nx, nu, N, thrust_hover_new)
+    % Update initial guess after mass change
+    w_updated = w_old;
+    offset = nx; % Skip initial state
+    
+    for k = 1:N
+        % Update control guess to new hover thrust
+        w_updated(offset+1:offset+nu) = thrust_hover_new;
+        offset = offset + nu + nx;
+    end
+end
+
+function w_shifted = shift_solution_simple(w_opt, nx, nu, N, mass_current)
+    % Simplified solution shifting
+    thrust_hover = mass_current * 9.81 / 4;
+    
+    % Extract current solution structure
+    w_shifted = [];
+    offset = nx; % Skip initial state
+    
+    % Shift controls and states
+    for k = 1:N-1
+        u_k = w_opt(offset+1:offset+nu);
+        offset = offset + nu;
+        x_k = w_opt(offset+1:offset+nx);
+        offset = offset + nx;
+        
+        w_shifted = [w_shifted; u_k; x_k];
+    end
+    
+    % Add final control and state (duplicate last or use hover)
+    w_shifted = [w_shifted; thrust_hover*ones(nu,1); w_opt(end-nx+1:end)];
+end
