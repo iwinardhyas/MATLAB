@@ -137,6 +137,28 @@ plot3(x_actual(1), y_actual(1), z_actual(1), 'ro', 'MarkerFaceColor', 'r', 'Mark
 plot3(x_ref(end), y_ref(end), z_ref(end), 'bx', 'MarkerSize', 10, 'LineWidth', 2, 'DisplayName', 'Akhir Referensi');
 plot3(x_actual(end), y_actual(end), z_actual(end), 'rx', 'MarkerSize', 10, 'LineWidth', 2, 'DisplayName', 'Akhir Aktual');
 
+% Plot Rintangan (Obstacle)
+num_obs = size(obs_center, 2); % Mendapatkan jumlah rintangan
+for j = 1:num_obs
+    % Ambil koordinat pusat dan jari-jari untuk rintangan saat ini
+    c = obs_center(:, j);
+    r = obs_radius(j);
+    obstacle_height = 5; % Tentukan tinggi silinder Anda
+
+    % Membuat data silinder (cylinder) dengan radius r dan tinggi 1
+    [x_cyl, y_cyl, z_cyl] = cylinder(r);
+    
+    % Mengatur tinggi silinder
+    z_cyl = z_cyl * obstacle_height;
+    
+    % Menggeser posisi silinder ke koordinat pusat rintangan (c)
+    x_cyl = x_cyl + c(1);
+    y_cyl = y_cyl + c(2);
+    z_cyl = z_cyl + c(3) - (obstacle_height / 2); % Menggeser z agar berpusat di titik c(3)
+    
+    % Menampilkan plot silinder
+    surf(x_cyl, y_cyl, z_cyl, 'FaceAlpha', 0.5, 'EdgeColor', 'none', 'DisplayName', ['Obstacle ' num2str(j)]);
+end
 
 % Tambahkan label dan judul
 xlabel('Posisi X (m)');
