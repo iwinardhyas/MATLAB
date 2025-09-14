@@ -39,13 +39,6 @@ function [ref_fun, ref_data] = QuadrotorReferenceNMPC(start_xy, goal_xy, mass, r
     map_size   = [50, 35];   % m
     resolution = 0.5;        % m per cell
 
-%     obstacles = [
-%         10,  5,  6, 10;
-%         22, 12,  4, 12;
-%         35,  2,  6,  8;
-%         32, 22,  7, 10
-%     ];
-
     obstacles = [
         % --- Halangan besar di tengah ---
         18, 10, 8, 12;     % obstacle kotak besar di tengah
@@ -198,12 +191,6 @@ function [G, x_coords, y_coords] = buildOccupancyGrid(map_size, res, obstacles, 
     inflate = r_drone + r_safe;   % total margin
     for i=1:size(obstacles,1)
         x0=obstacles(i,1); y0=obstacles(i,2); w=obstacles(i,3); h=obstacles(i,4);
-%         xi = find(x_coords>=x0 & x_coords<=x0+w);
-%         yi = find(y_coords>=y0 & y_coords<=y0+h);
-
-%         xi = round((x0 - inflate)/res)+1 : round((x0 + w + inflate)/res)+1;
-%         yi = round((y0 - inflate)/res)+1 : round((y0 + h + inflate)/res)+1;
-%         G(xi, yi) = true;
 
         xi_min = max(1, round((x0 - inflate)/res)+1);
         xi_max = min(nx, round((x0 + w + inflate)/res)+1);
@@ -285,57 +272,7 @@ function path = dijkstraGrid(G, start_idx, goal_idx)
     end
 end
 
-% function [s_ref, ref_xy] = smoothAndParametrize(path_xy)
-%     % Remove duplicates
-%     diffs = [true; any(diff(path_xy,1,1),2)];
-%     P = path_xy(diffs,:);
-% 
-%     % Shortcut smoothing
-%     P = shortcutSmooth(P, 20);
-% 
-%     % Arc-length parameterization
-%     s = [0; cumsum(sqrt(sum(diff(P).^2,2)) )];
-% 
-%     % PCHIP per axis
-%     ss = linspace(0, s(end), max(200, ceil(s(end)/0.05)))';
-%     xq = pchip(s, P(:,1), ss);
-%     yq = pchip(s, P(:,2), ss);
-% 
-%     s_ref = ss;
-%     ref_xy = [xq, yq];
-% end
-% 
-% function P2 = shortcutSmooth(P, iters)
-%     if size(P,1)<=2; P2=P; return; end
-%     P2 = P;
-%     for k=1:iters
-%         i = randi([1, size(P2,1)-2]);
-%         j = randi([i+2, size(P2,1)]);
-%         % Always accept straight-line replacement (we have no continuous obstacles here)
-%         % For occupancy-aware shortcutting, insert collision checking here.
-%         P2 = [P2(1:i,:); P2(j,:); P2(j+1:end,:)]; %#ok<AGROW>
-%         if size(P2,1)<=2, break; end
-%     end
-% end
-
 function [s_ref, ref_xy] = smoothAndParametrize(path_xy, G, x_coords, y_coords, res)
-    % Hapus duplikat
-%     diffs = [true; any(diff(path_xy,1,1),2)];
-%     P = path_xy(diffs,:);
-% 
-%     % Shortcut smoothing DENGAN collision check
-%     P = shortcutSmooth(P, 50, G, x_coords, y_coords, res, 0.5);  % 0.5 m inflasi
-% 
-%     % Parameterisasi panjang lintasan
-%     s = [0; cumsum(sqrt(sum(diff(P).^2,2)))];
-% 
-%     % PCHIP per s (cukup rapat agar halus)
-%     ss = linspace(0, s(end), max(200, ceil(s(end)/0.05)))';
-%     xq = pchip(s, P(:,1), ss);
-%     yq = pchip(s, P(:,2), ss);
-% 
-%     s_ref  = ss;
-%     ref_xy = [xq, yq];
     smoothed = shortcutSmooth(path_xy, G, x_coords, y_coords);
 
     % 2) Interpolasi spline untuk membuat halus
