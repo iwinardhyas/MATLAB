@@ -263,7 +263,7 @@ N_sim = T_sim / dt;
 history_x = zeros(nx, N_sim + 1);
 history_u = zeros(nu, N_sim);
 history_x_ref = zeros(nx, N_sim + 1);
-v_ref_history = zeros(3,N_sim);
+v_ref_history = zeros(2,N_sim);
 
 % Initial state: start closer to first reference point
 x_ref_initial = QuadrotorReferenceTrajectory6(0);
@@ -273,59 +273,22 @@ current_state(3) = max(current_state(3), 0.0); % Ensure minimum altitude
 history_x(:, 1) = current_state;
 
 %% ---------- APF parameters (set di awal, sebelum loop) ----------
-k_att = 0.2;       % attractive gain
-k_rep = 60.0;       % repulsive gain (tune)
-d0    = 6.0;       % influence distance of obstacles [m]
-v_scale = 0.3;     % scale factor to convert F_total -> v_ref (m/s per N-equivalent)
+k_att = 0.1;       % attractive gain
+k_rep = 10.0;       % repulsive gain (tune)
+d0    = 8.0;       % influence distance of obstacles [m]
+v_scale = 0.2;     % scale factor to convert F_total -> v_ref (m/s per N-equivalent)
 max_v_ref = 5.0;   % maximum lin velocity commanded by APF [m/s]
 
-% obs_center = [ 3  ;  7  ; 1.0 ];  % obstacle 1 di (3,7,1)
-% obs_radius = 1.0;                 % radius 1m
-% 
-% % kalau lebih dari 1 obstacle:
-% obs_center = [3  6  8 ;    % x
-%               7  2  5 ;    % y
-%               1  1  2 ];   % z
-% obs_radius = [1.0  0.8  1.5];   % radius masing-masing obstacle
+num_obs = 17;          % jumlah obstacle
+obs_radius_val = 0.5; % semua radius sama
+z_pos = 1.0;          % tinggi referensi (anggap obstacle menempel ground, drone terbang di atas)
 
-% --- Parameter Rintangan Acak ---
-num_obs = 10; % Jumlah rintangan yang Anda inginkan
-max_x = 10;
-max_y = 10;
-max_z = 5;
-obstacle_diameter = 1.0; 
-obs_radius = obstacle_diameter / 2;
+% posisi obstacle (manual supaya jaraknya tidak terlalu dekat)
+obs_center = [ 6  6  6  8   12   12   15   15   16   18   18   22  23   24  26  29   29 ;   % x
+               9  6  3  1.8  4   6.8   6   1.5  8.2  6.2  2.8  2   4.8  8   4   2.2  6.8 ;   % y
+               z_pos*ones(1,num_obs) ];       % z
 
-% --- Buat Rintangan Acak Tanpa Beririsan ---
-obs_center = [];
-count = 0;
-while count < num_obs
-    % 1. Hasilkan satu rintangan acak baru
-    new_obs_center = [max_x; max_y; max_z] .* rand(3, 1);
-    
-    % 2. Periksa apakah rintangan baru ini terlalu dekat dengan yang sudah ada
-    is_valid = true;
-    for k = 1:count
-        dist_between = norm(new_obs_center - obs_center(:, k));
-        
-        % Jarak minimal adalah jumlah radius kedua rintangan
-        min_distance = obs_radius + obs_radius;
-        
-        if dist_between < min_distance
-            is_valid = false; % Rintangan terlalu dekat
-            break;
-        end
-    end
-
-    % 3. Jika rintangan valid, tambahkan ke daftar
-    if is_valid
-        obs_center = [obs_center, new_obs_center];
-        count = count + 1;
-    end
-end
-
-% Set radius yang sama untuk semua rintangan
-obs_radius = obs_radius * ones(1, num_obs);
+obs_radius = obs_radius_val * ones(1,num_obs);
 
 %%
 fprintf('Starting NMPC simulation...\n');
@@ -339,13 +302,13 @@ for i = 1:N_sim
     history_x_ref(:, i) = x_ref_at_current_time;
     
     %%APF
-    p = current_state(1:3);  % drone position
-    F_att = -k_att * (p - x_ref_at_current_time(1:3));  % goal_pos global target (3x1)
+    p = current_state(1:2);  % drone position
+    F_att = -k_att * (p - x_ref_at_current_time(1:2));  % goal_pos global target (3x1)
     
-    F_rep = zeros(3,1);
+    F_rep = zeros(2,1);
     num_obs = size(obs_center,2);
     for j = 1:num_obs
-        c = obs_center(:,j);
+        c = obs_center(1:2,j);
         r = obs_radius(j);
         vec = p - c;
         dist = norm(vec);
@@ -365,7 +328,7 @@ for i = 1:N_sim
             dir_ = vec / dist;
             % standard repulsive magnitude
             mag = k_rep * (1/d - 1/d0) * (1/d^2) * (d/norm(d));
-%             mag = k_rep * (1/d - 1/d0);
+%             mag = k_rep * (1/d - 1/d0) * (d0/dist);
             F_rep = F_rep + mag * dir_;
             status = 'Dekat (zona repulsif)';
         else
@@ -391,8 +354,8 @@ for i = 1:N_sim
     prev_v_ref = v_ref;
     v_ref_history(:,i)=v_ref; 
 %     fprintf('Waktu: %.2f s, Jarak ke Rintangan (d): %.2f m, Magnitudo v_ref: %.2f m/s\n', i, d, vn);
-    fprintf('Waktu %.2f s | v_ref = [%.2f, %.2f, %.2f] | Magnitudo = %.2f m/s | Jarak ke Rintangan (d): %.2f m | F_att: %.2f | F_rep: %.2f \n\n', ...
-    i*dt, v_ref(1), v_ref(2), v_ref(3), vn, d,F_att,F_rep);
+    fprintf('Waktu %.2f s | v_ref = [%.2f, %.2f] | Magnitudo = %.2f m/s | Jarak ke Rintangan (d): %.2f m | F_att: %.2f | F_rep: %.2f \n\n', ...
+    i*dt, v_ref(1), v_ref(2), vn, d,F_att,F_rep);
     %%
 
     
@@ -404,7 +367,7 @@ for i = 1:N_sim
         % shift only the position rows (1:3)
         % optionally reduce shift weighting for farther horizon steps (fade-out)
         weight = exp(-0.1*(kk-1)); 
-        X_ref_horizon(1:3,kk) = X_ref_horizon(1:3,kk) + weight * v_ref * (kk-1)*dt;
+        X_ref_horizon(1:2,kk) = X_ref_horizon(1:2,kk) + weight * v_ref * (kk-1)*dt;
     end
     %%
     actual_params = [current_state; reshape(X_ref_horizon, [], 1)];
