@@ -1,6 +1,6 @@
 % 1. Setup CasADi
-addpath('/home/zee/Erwin/MATLAB/casadi-3.7.1-linux64-matlab2018b');
-% addpath('C:\Users\DELL\Documents\MATLAB\casadi-3.7.0-windows64-matlab2018b');
+% addpath('/home/zee/Erwin/MATLAB/casadi-3.7.1-linux64-matlab2018b');
+addpath('C:\Users\DELL\Documents\MATLAB\casadi-3.7.0-windows64-matlab2018b');
 import casadi.*
 
 % Clear workspace to avoid variable conflicts
@@ -273,11 +273,11 @@ current_state(3) = max(current_state(3), 0.0); % Ensure minimum altitude
 history_x(:, 1) = current_state;
 
 %% ---------- APF parameters (set di awal, sebelum loop) ----------
-k_att = 0.1;       % attractive gain
-k_rep = 10.0;       % repulsive gain (tune)
+k_att = 0.0001;       % attractive gain
+k_rep = 20.0;       % repulsive gain (tune)
 d0    = 8.0;       % influence distance of obstacles [m]
-v_scale = 0.2;     % scale factor to convert F_total -> v_ref (m/s per N-equivalent)
-max_v_ref = 5.0;   % maximum lin velocity commanded by APF [m/s]
+v_scale = 0.1;     % scale factor to convert F_total -> v_ref (m/s per N-equivalent)
+max_v_ref = 4.0;   % maximum lin velocity commanded by APF [m/s]
 
 num_obs = 17;          % jumlah obstacle
 obs_radius_val = 0.5; % semua radius sama
@@ -313,7 +313,7 @@ for i = 1:N_sim
         vec = p - c;
         dist = norm(vec);
         d = dist - r;  % distance to obstacle surface
-        if d <= 0
+        if d <= 0 || d <1
             % already inside obstacle -> strong repulsion (clamp to avoid NaN)
             dir_ = vec / (dist + 1e-6);
 %         if dist < 1e-6
@@ -324,7 +324,7 @@ for i = 1:N_sim
 %         end
             F_rep = F_rep + k_rep * 1e3 * dir_;
             status = '!!! MENABRAK !!!';
-        elseif d < d0
+        elseif d < d0 || d > 1
             dir_ = vec / dist;
             % standard repulsive magnitude
             mag = k_rep * (1/d - 1/d0) * (1/d^2) * (d/norm(d));

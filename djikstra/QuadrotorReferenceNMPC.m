@@ -1,27 +1,3 @@
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% DEMO: NMPC + Dijkstra + Trajectory Smoothing for Quadrotor (Ready-to-Run)
-% -------------------------------------------------------------------------
-% What this script does
-% 1) Builds a 2D occupancy grid with obstacles.
-% 2) Finds shortest path (x,y) using Dijkstra.
-% 3) Smooths the path (shortcut + PCHIP) and time-parameterizes it.
-% 4) Generates a continuous reference trajectory (x,y,z,yaw and derivatives).
-% 5) Solves NMPC (CasADi) to track the trajectory with a 12D quadrotor model
-%    and inputs [T, tau_x, tau_y, tau_z]. Discretization: RK4.
-% 6) Plots results.
-%
-% Notes
-% - This is a research-grade scaffold with standard formulations and 
-%   conservative defaults. You can swap the 2D planner with 3D and keep 
-%   the rest intact.
-% - Requires: MATLAB R2021a+ and CasADi (e.g., casadi-3.6.5) on path.
-% - No special toolboxes are required (smoothing uses PCHIP).
-% - You can plug this into your existing function
-%       xdesired = QuadrotorReferenceTrajectory1(t, mass)
-%   by replacing the reference source with the generated trajectory here.
-% - For clarity, everything is in one file; helper functions are at the end.
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% clear; clc; close all;
 
 function [ref_fun, ref_data] = QuadrotorReferenceNMPC(start_xy, goal_xy, mass, r_drone, r_safe)
 % QuadrotorReferenceNMPC

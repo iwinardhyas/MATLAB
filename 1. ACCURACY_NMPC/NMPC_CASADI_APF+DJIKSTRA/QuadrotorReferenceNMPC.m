@@ -1,0 +1,624 @@
+
+% function [ref_fun, ref_data] = QuadrotorReferenceNMPC(start_xy, goal_xy, mass, r_drone, r_safe)
+% % QuadrotorReferenceNMPC
+% % Menghasilkan fungsi reference trajectory untuk NMPC quadrotor
+% % Input:
+% %   start_xy : [x, y] posisi awal (m)
+% %   goal_xy  : [x, y] posisi tujuan (m)
+% %   mass     : massa quadrotor (kg)
+% %
+% % Output:
+% %   ref_fun  : handle function @(t) -> [x,y,z,yaw,...] di waktu t
+% %   ref_data : struct berisi seluruh array reference (t, x, y, ...)
+% 
+% %     %% -------------------- ENVIRONMENT -------------------- %%
+% 
+%     map_size   = [50, 35];   % [m]
+%     resolution = 0.5;        % m per cell
+% 
+%     %% Parameter Obstacles (circle)
+%     num_obs = 17;                 % jumlah obstacle
+%     obs_radius_val = 0.5;         % semua radius sama
+%     z_pos = 1.0;                  % tinggi referensi (anggap ground, drone terbang di atas)
+% 
+%     obs_center = [ ...
+%        6   6   6   8   12   12   15   15   16   18   18   22   23   24   26   29   29 ;  % x
+%        9   6   3   1.8 4    6.8  6    1.5  8.2  6.2  2.8  2    4.8  8    4    2.2  6.8 ;  % y
+%        z_pos*ones(1,17) ];   % z (nggak dipakai Dijkstra 2D)
+% 
+%     obs_radius = obs_radius_val * ones(1,num_obs);
+% 
+%     %% Generate Occupancy Grid
+%     nx = map_size(1) / resolution;
+%     ny = map_size(2) / resolution;
+%     occ_grid = zeros(ny, nx);   % 0 = free, 1 = obstacle
+% 
+%     for i = 1:num_obs
+%         % ambil posisi obstacle i
+%         x_c = obs_center(1,i);
+%         y_c = obs_center(2,i);
+%         r   = obs_radius(i);
+% 
+%         % tandai semua cell yang masuk radius
+%         for ix = 1:nx
+%             for iy = 1:ny
+%                 x = (ix-0.5)*resolution;
+%                 y = (iy-0.5)*resolution;
+%                 if sqrt((x - x_c)^2 + (y - y_c)^2) <= r
+%                     occ_grid(iy,ix) = 1;
+%                 end
+%             end
+%         end
+% end
+% 
+%     % Reference altitude & yaw
+%     z_ref_const   = 2.0;   % m
+%     psi_ref_const = 0.0;   % rad
+% 
+%     % Time law params
+%     v_max    = 3.0;   % m/s
+%     a_max    = 2.0;   % m/s^2
+%     min_dt   = 0.05;  % s
+% 
+%     rng(5); % reproducible
+% 
+%     %% ----------------------- OCCUPANCY GRID ------------------------ %%
+%     [G, x_coords, y_coords] = buildOccupancyGrid(map_size, resolution, obs_center, obs_radius, r_drone, r_safe);
+%     start_idx = world2grid(start_xy, x_coords, y_coords);
+%     goal_idx  = world2grid(goal_xy,  x_coords, y_coords);
+% 
+% 
+%     %% ---------------------------- DIJKSTRA -------------------------- %%
+%     path_idx = dijkstraGrid(G, start_idx, goal_idx);
+%     if isempty(path_idx)
+%         error('No path found by Dijkstra. Adjust obstacles or start/goal.');
+%     end
+%     path_xy = grid2world(path_idx, x_coords, y_coords);
+% 
+%     %% ------------------- SMOOTH & TIME-SCALE ------------------------ %%
+% %     [s_ref, ref_xy] = smoothAndParametrize(path_xy);
+%     [s_ref, ref_xy] = smoothAndParametrize(path_xy, G, x_coords, y_coords, resolution);
+%     [t_ref, xy_ref, dxy_ref, ddxy_ref] = timeScaleReference(s_ref, ref_xy, v_max, a_max, min_dt);
+% 
+%     %% ------------------- BUILD FULL REFERENCE ----------------------- %%
+%     ref_data = struct();
+%     ref_data.t    = t_ref;
+%     ref_data.x    = xy_ref(:,1);
+%     ref_data.y    = xy_ref(:,2);
+%     ref_data.z    = z_ref_const*ones(size(t_ref));
+%     ref_data.phi     = zeros(size(t_ref)); % roll
+%     ref_data.theta   = zeros(size(t_ref)); % pitch
+%     ref_data.psi  = psi_ref_const*ones(size(t_ref));
+%     ref_data.vx   = dxy_ref(:,1);
+%     ref_data.vy   = dxy_ref(:,2);
+%     ref_data.vz   = zeros(size(t_ref));
+%     ref_data.phidot  = zeros(size(t_ref));
+%     ref_data.thetadot= zeros(size(t_ref));
+%     ref_data.psidot  = zeros(size(t_ref));
+%     ref_data.psir = zeros(size(t_ref));
+%     ref_data.ax   = ddxy_ref(:,1);
+%     ref_data.ay   = ddxy_ref(:,2);
+%     ref_data.az   = zeros(size(t_ref));
+%     ref_data.psi2 = zeros(size(t_ref));
+% 
+%     % Function handle untuk query mirip QuadrotorReferenceTrajectory1
+%     ref_fun = @(t) referenceQuery(t, ref_data);
+%     xdesired = [ref_data.x;ref_data.y;ref_data.z;ref_data.phi;ref_data.theta;ref_data.psi;ref_data.vx;ref_data.vy;ref_data.vz;ref_data.phidot;ref_data.thetadot;ref_data.psidot];
+
+function [ref_fun, ref_data] = QuadrotorReferenceNMPC(start_xy, goal_xy, mass, r_drone, r_safe)
+    %% Map Parameters
+    map_size   = [50, 35];    % [m]
+    res        = 0.5;         % [m] grid resolution
+
+    %% Circular obstacles definition
+    num_obs       = 17;
+    obs_radius_val = 0.5; 
+    z_ref_const   = 1.0;   % konstanta tinggi
+    psi_ref_const = 0;     % konstanta yaw
+
+    obs_center = [ ...
+       6   6   6   8   12   12   15   15   16   18   18   22   23   24   26   29   29 ;  % x
+       9   6   3   1.8 4    6.8  6    1.5  8.2  6.2  2.8  2    4.8  8    4    2.2  6.8 ;  % y
+       z_ref_const*ones(1,17) ];   % z (not used in 2D)
+
+    obs_radius = obs_radius_val * ones(1,num_obs);
+
+    %% Build Occupancy Grid
+    [G, x_coords, y_coords] = buildOccupancyGridCircular(map_size, res, obs_center, obs_radius, r_drone, r_safe);
+
+    %% Convert start/goal to nearest grid indices
+    [~, ix_start] = min(abs(x_coords - start_xy(1)));
+    [~, iy_start] = min(abs(y_coords - start_xy(2)));
+    [~, ix_goal]  = min(abs(x_coords - goal_xy(1)));
+    [~, iy_goal]  = min(abs(y_coords - goal_xy(2)));
+
+    start_idx = [iy_start, ix_start];
+    goal_idx  = [iy_goal,  ix_goal];
+
+    %% Run Dijkstra to get path indices
+    path_idx = dijkstraGrid(G, start_idx, goal_idx);  % Nx2 (row,col)
+
+    %% Convert path indices to world coordinates
+    path_x = x_coords(path_idx(:,2))';
+    path_y = y_coords(path_idx(:,1))';
+    path_z = z_ref_const * ones(size(path_x));
+
+    %% Parameter waktu sederhana
+    N_path = numel(path_x);
+    t_ref  = linspace(0, (N_path-1), N_path);  % bisa dianggap dt = 1 s
+
+    %% Kecepatan & akselerasi dengan finite difference
+    xy_ref = [path_x(:), path_y(:)];
+
+    dxy_ref = zeros(N_path,2);
+    dxy_ref(1:end-1,:) = diff(xy_ref)./diff(t_ref(:));
+    dxy_ref(end,:) = dxy_ref(end-1,:);
+
+    ddxy_ref = zeros(N_path,2);
+    ddxy_ref(1:end-1,:) = diff(dxy_ref)./diff(t_ref(:));
+    ddxy_ref(end,:) = ddxy_ref(end-1,:);
+
+    %% Buat ref_data sesuai format NMPC lama
+    ref_data = struct();
+    ref_data.t    = t_ref;
+    ref_data.x    = path_x;
+    ref_data.y    = path_y;
+    ref_data.z    = path_z;
+    ref_data.phi     = zeros(size(t_ref));
+    ref_data.theta   = zeros(size(t_ref));
+    ref_data.psi     = psi_ref_const*ones(size(t_ref));
+    ref_data.vx      = dxy_ref(:,1);
+    ref_data.vy      = dxy_ref(:,2);
+    ref_data.vz      = zeros(size(t_ref));
+    ref_data.phidot     = zeros(size(t_ref));
+    ref_data.thetadot   = zeros(size(t_ref));
+    ref_data.psidot     = zeros(size(t_ref));
+    ref_data.psir       = zeros(size(t_ref));
+    ref_data.ax        = ddxy_ref(:,1);
+    ref_data.ay        = ddxy_ref(:,2);
+    ref_data.az        = zeros(size(t_ref));
+    ref_data.psi2      = zeros(size(t_ref));
+
+    %% Function handle
+    ref_fun = @(t) referenceQuery(t, ref_data);
+
+    %% (Opsional) Plot untuk verifikasi
+    figure; hold on; axis equal;
+    imagesc(x_coords, y_coords, G'); set(gca,'YDir','normal');
+    colormap(gray); title('Occupancy Grid dengan Circular Obstacles');
+    xlabel('X [m]'); ylabel('Y [m]');
+
+    % obstacle circles
+    theta = linspace(0,2*pi,50);
+    for i=1:num_obs
+        fill(obs_center(1,i) + obs_radius(i)*cos(theta), ...
+             obs_center(2,i) + obs_radius(i)*sin(theta), ...
+             'k','FaceAlpha',0.3,'EdgeColor','none');
+    end
+
+    % start & goal
+    plot(start_xy(1), start_xy(2),'go','MarkerSize',8,'LineWidth',2);
+    plot(goal_xy(1),  goal_xy(2), 'rx','MarkerSize',8,'LineWidth',2);
+
+    % path
+    path_xy = [path_x(:), path_y(:)];
+    plot(path_xy(:,1), path_xy(:,2),'r--','LineWidth',2);
+    legend('','Obstacle','Start','Goal','Path');
+
+end
+
+
+
+%% ------------------- PLOTS ------------------------------------------ %%
+% figure('Name','Occupancy + Path'); hold on; axis equal; grid on;
+% imagesc(x_coords, y_coords, ~G'); set(gca,'YDir','normal'); colormap(gray);
+% plot(path_xy(:,1), path_xy(:,2), 'r.-', 'LineWidth', 1.5, 'DisplayName','Dijkstra path');
+% plot(ref.x, ref.y, 'b-', 'LineWidth', 1.5, 'DisplayName','Smoothed ref');
+% plot(start_xy(1), start_xy(2),'go','MarkerFaceColor','g');
+% plot(goal_xy(1),  goal_xy(2), 'mo','MarkerFaceColor','m');
+% legend; title('Map (white = free), Dijkstra path & Smoothed Trajectory'); xlabel('x [m]'); ylabel('y [m]');
+% 
+% figure('Name','3D Trajectory'); plot3(ref.x, ref.y, ref.z, 'b-'); hold on; grid on; axis equal;
+% plot3(log.x(:,1), log.x(:,2), log.x(:,3), 'r-'); xlabel('x'); ylabel('y'); zlabel('z');
+% legend('Reference','NMPC State'); title('3D Trajectory Tracking');
+% 
+% figure('Name','States Over Time');
+% subplot(3,1,1); plot(log.t, log.x(:,1), log.t, log.xd(:,1)); ylabel('x [m]'); grid on; legend('x','x_d');
+% subplot(3,1,2); plot(log.t, log.x(:,2), log.t, log.xd(:,2)); ylabel('y [m]'); grid on; legend('y','y_d');
+% subplot(3,1,3); plot(log.t, log.x(:,3), log.t, log.xd(:,3)); ylabel('z [m]'); grid on; legend('z','z_d'); xlabel('t [s]');
+% 
+% figure('Name','Inputs');
+% subplot(4,1,1); plot(log.t, log.u(:,1)); grid on; ylabel('T [N]');
+% subplot(4,1,2); plot(log.t, log.u(:,2)); grid on; ylabel('Mx [Nm]');
+% subplot(4,1,3); plot(log.t, log.u(:,3)); grid on; ylabel('My [Nm]');
+% subplot(4,1,4); plot(log.t, log.u(:,4)); grid on; ylabel('Mz [Nm]'); xlabel('t [s]');
+% 
+% disp('Done. You can now replace your QuadrotorReferenceTrajectory1 with ref_fun.');
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                           HELPER FUNCTIONS                             %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% function [G, x_coords, y_coords] = buildOccupancyGrid(map_size, res, obs, obs_radius, r_drone, r_safe)
+% % BUILD OCCUPANCY GRID (flexible)
+% %   Supports:
+% %     - rectangular obstacles: obs is Mx4 array [x y w h] (each row)
+% %     - circular obstacles:   obs is 3xN (or 2xN) centers OR Nx3 / Nx2; obs_radius gives radii
+% %
+% %   Output:
+% %     G         : logical matrix (ny x nx), true = occupied
+% %     x_coords  : 1 x nx vector (cell center x)
+% %     y_coords  : 1 x ny vector (cell center y)
+% %
+% %   Usage examples:
+% %     [G,xs,ys] = buildOccupancyGrid([50 35], 0.5, obstacles_rect, [], r_drone, r_safe);
+% %     [G,xs,ys] = buildOccupancyGrid([50 35], 0.5, obs_center, obs_radius, r_drone, r_safe);
+% 
+%     if nargin < 6
+%         error('Not enough input arguments. Expect: map_size, res, obs, obs_radius, r_drone, r_safe');
+%     end
+% 
+%     % grid size (number of cells)
+%     nx = round(map_size(1) / res);
+%     ny = round(map_size(2) / res);
+% 
+%     % coordinates of cell centers
+%     x_coords = (res/2) : res : (res/2 + (nx-1)*res);
+%     y_coords = (res/2) : res : (res/2 + (ny-1)*res);
+% 
+%     % meshgrid for vectorized checks: x_grid, y_grid are size ny x nx
+%     [x_grid, y_grid] = meshgrid(x_coords, y_coords);
+% 
+%     % initialize occupancy: rows -> y, cols -> x
+%     G = false(ny, nx);
+% 
+%     % inflation margin (drone radius + safety buffer)
+%     inflate = r_drone + r_safe;
+% 
+%     % Detect format of `obs`
+%     % Case A: rectangular obstacles when obs is Mx4 (each row: [x y w h])
+%     if size(obs,2) == 4 && ~(size(obs,1) == 3)  % avoid confusion with 3xN center matrices
+%         rects = obs; % M x 4
+%         for i = 1:size(rects,1)
+%             x0 = rects(i,1); y0 = rects(i,2); w = rects(i,3); h = rects(i,4);
+%             mask = (x_grid >= (x0 - inflate)) & (x_grid <= (x0 + w + inflate)) & ...
+%                    (y_grid >= (y0 - inflate)) & (y_grid <= (y0 + h + inflate));
+%             G(mask) = true;
+%         end
+% 
+%     % Case B: circular obstacles (centers given)
+%     else
+%         % normalize obs into x_c (1xN), y_c (1xN)
+%         if size(obs,1) == 3   % 3 x N (x;y;z)
+%             x_c = obs(1,:);
+%             y_c = obs(2,:);
+%         elseif size(obs,1) == 2 % 2 x N
+%             x_c = obs(1,:);
+%             y_c = obs(2,:);
+%         elseif size(obs,2) == 3 && size(obs,1) ~= 4 % maybe N x 3
+%             x_c = obs(:,1)';
+%             y_c = obs(:,2)';
+%         elseif size(obs,2) == 2 && size(obs,1) ~= 4 % maybe N x 2
+%             x_c = obs(:,1)';
+%             y_c = obs(:,2)';
+%         else
+%             error('Unrecognized obstacle format. Provide Mx4 rectangles OR centers as 3xN/2xN (or Nx3/Nx2).');
+%         end
+% 
+%         % radii vector
+%         if isempty(obs_radius)
+%             error('For circular obstacles you must pass obs_radius (scalar or vector).');
+%         end
+%         if isscalar(obs_radius)
+%             r_vec = obs_radius * ones(1, numel(x_c));
+%         else
+%             r_vec = reshape(obs_radius, 1, []); % 1 x N
+%             if numel(r_vec) ~= numel(x_c)
+%                 error('Length of obs_radius must match number of centers.');
+%             end
+%         end
+% 
+%         % mark occupied cells (include inflate)
+%         for i = 1:numel(x_c)
+%             R = r_vec(i) + inflate;
+%             mask = (x_grid - x_c(i)).^2 + (y_grid - y_c(i)).^2 <= R^2;
+%             G(mask) = true;
+%         end
+%     end
+% 
+% end
+
+function [G, x_coords, y_coords] = buildOccupancyGridCircular(map_size, res, obs_center, obs_radius, r_drone, r_safe)
+% BUILD OCCUPANCY GRID FOR CIRCULAR OBSTACLES
+% outputs:
+%   G        : logical ny x nx (rows = y, cols = x), true = occupied
+%   x_coords : 1 x nx, cell centers in x
+%   y_coords : 1 x ny, cell centers in y
+%
+% inputs:
+%   map_size    : [Xmax, Ymax]
+%   res         : grid resolution (m)
+%   obs_center  : N x 2 (or 2 x N or 3 x N) centers (x,y,zignored)
+%   obs_radius  : scalar or vector length N
+%   r_drone     : drone radius
+%   r_safe      : safe margin
+
+    if nargin < 6
+        error('Expect 6 inputs: map_size,res,obs_center,obs_radius,r_drone,r_safe');
+    end
+
+    nx = max(1, round(map_size(1)/res));
+    ny = max(1, round(map_size(2)/res));
+
+    % cell centers
+    x_coords = (res/2) : res : (res/2 + (nx-1)*res);
+    y_coords = (res/2) : res : (res/2 + (ny-1)*res);
+
+    % initialize occupancy: rows = y, cols = x
+    G = false(ny, nx);
+
+    % meshgrid (X,Y are ny x nx)
+    [X, Y] = meshgrid(x_coords, y_coords);
+
+    % normalize obs_center to N x 2 (x,y)
+    if isempty(obs_center)
+        return;
+    end
+
+    if size(obs_center,1) == 3
+        centers = obs_center(1:2,:)';         %  N x 2
+    elseif size(obs_center,1) == 2
+        centers = obs_center';                % convert 2 x N -> N x 2
+    elseif size(obs_center,2) == 2
+        centers = obs_center;                 % assume already N x 2
+    else
+        error('obs_center must be 2xN, 3xN, N x 2, or N x 3');
+    end
+
+    nobs = size(centers,1);
+
+    % radii
+    if isscalar(obs_radius)
+        r_vec = obs_radius * ones(nobs,1);
+    else
+        r_vec = obs_radius(:);
+        if numel(r_vec) ~= nobs
+            error('Length of obs_radius must match number of centers');
+        end
+    end
+
+    inflate = r_drone + r_safe;
+
+    % mark occupied cells for each obstacle (disk)
+    for i = 1:nobs
+        cx = centers(i,1);
+        cy = centers(i,2);
+        r_eff = r_vec(i) + inflate;
+
+        mask = (X - cx).^2 + (Y - cy).^2 <= r_eff^2;  % ny x nx
+        G = G | mask;  % ny x nx
+    end
+end
+
+function ij = world2grid(p_xy, x_coords, y_coords)
+    [~, ix] = min(abs(x_coords - p_xy(1)));
+    [~, iy] = min(abs(y_coords - p_xy(2)));
+    ij = [ix, iy];
+end
+
+function P = grid2world(idx_list, x_coords, y_coords)
+    % pastikan index bertipe integer dan >= 1
+    idx_list = round(idx_list);  
+    if any(idx_list(:) < 1)
+        error('grid2world: Index < 1 ditemukan: %s', mat2str(idx_list));
+    end
+    
+    P = zeros(size(idx_list,1), 2);
+    for k = 1:size(idx_list,1)
+        P(k,1) = x_coords(idx_list(k,1));
+        P(k,2) = y_coords(idx_list(k,2));
+    end
+end
+
+
+function path = dijkstraGrid(G, start_idx, goal_idx)
+    % 4-connected Dijkstra on binary grid G (true=occupied). Returns list of indices [ix,iy].
+    sz = size(G);
+    start = sub2ind(sz, start_idx(1), start_idx(2));
+    goal  = sub2ind(sz, goal_idx(1),  goal_idx(2));
+    N = prod(sz);
+    dist = inf(N,1); prev = zeros(N,1,'uint32'); visited = false(N,1);
+    dist(start)=0;
+
+    % Min-heap via simple linear scan (ok for medium grids)
+    while true
+        % pick unvisited with minimal dist
+        [~, u] = min(dist + visited*1e12);
+        if isinf(dist(u)) || u==goal; break; end
+        visited(u)=true;
+        [ix,iy] = ind2sub(sz, u);
+        nbrs = [ix-1,iy; ix+1,iy; ix,iy-1; ix,iy+1];
+        for j=1:4
+            x=nbrs(j,1); y=nbrs(j,2);
+            if x>=1 && x<=sz(1) && y>=1 && y<=sz(2) && ~G(x,y)
+                v = sub2ind(sz, x,y);
+                if visited(v); continue; end
+                alt = dist(u) + 1; % unit cost per cell
+                if alt < dist(v)
+                    dist(v)=alt; prev(v)=u;
+                end
+            end
+        end
+    end
+
+    if isinf(dist(goal))
+        path = [];
+        return;
+    end
+    % reconstruct
+    P = uint32([]); u = goal;
+    while u~=0
+        P(end+1) = u; %#ok<AGROW>
+        if u==start; break; end
+        u = prev(u);
+    end
+    P = fliplr(P);
+    path = zeros(numel(P),2);
+    for k=1:numel(P)
+        [ix,iy] = ind2sub(sz, P(k));
+        path(k,:) = [ix,iy];
+    end
+end
+
+function [s_ref, ref_xy] = smoothAndParametrize(path_xy, G, x_coords, y_coords, res)
+%     ref_xy = [xq, yq];
+    smoothed = shortcutSmooth(path_xy, G, x_coords, y_coords);
+
+    % 2) Interpolasi spline untuk membuat halus
+    t = 1:size(smoothed,1);
+    tt = linspace(1, size(smoothed,1), 5*size(smoothed,1)); % 5x lebih rapat
+    x_smooth = interp1(t, smoothed(:,1), tt, 'pchip');
+    y_smooth = interp1(t, smoothed(:,2), tt, 'pchip');
+
+    % 3) Hitung panjang lintasan kumulatif (arc length)
+    ds = sqrt(diff(x_smooth).^2 + diff(y_smooth).^2);
+    s_ref = [0; cumsum(ds(:))];
+
+    ref_xy = [x_smooth(:), y_smooth(:)];
+end
+
+function P2 = shortcutSmooth(P, iters, G, x_coords, y_coords, res, inflate)
+    if size(P,1)<=2, P2 = P; return; end
+    P2 = P;
+    for k = 1:iters
+        if size(P2,1) <= 2, break; end
+        i = randi([1, size(P2,1)-2]);
+        j = randi([i+2, size(P2,1)]);
+        % cek apakah segmen (P2(i)->P2(j)) bebas obstacle
+        if isFreeLine(P2(i,:), P2(j,:), G, x_coords, y_coords, res, inflate)
+            P2 = [P2(1:i,:); P2(j,:); P2(j+1:end,:)]; %#ok<AGROW>
+        end
+    end
+end
+
+function ok = isFreeLine(pA, pB, G, x_coords, y_coords, res, inflate)
+    % Sampling rapat sepanjang garis dan cek occupancy
+    L = norm(pB - pA);
+    if L < 1e-6, ok = true; return; end
+    % step: setengah sel
+    step = max(res*0.5, 0.1);
+    n    = max(2, ceil(L/step));
+    t    = linspace(0,1,n)';
+    pts  = pA.*(1-t) + pB.*t;
+
+    % inflasi obstacle dalam satuan sel
+    dilate_cells = max(0, round(inflate/res));
+
+    sz = size(G);
+    for r = 1:n
+        % world -> nearest grid index
+        [~, ix] = min(abs(x_coords - pts(r,1)));
+        [~, iy] = min(abs(y_coords - pts(r,2)));
+        % cek sekitar (inflasi)
+        xlo = max(1, ix - dilate_cells); xhi = min(sz(1), ix + dilate_cells);
+        ylo = max(1, iy - dilate_cells); yhi = min(sz(2), iy + dilate_cells);
+        if any(G(xlo:xhi, ylo:yhi), 'all')
+            ok = false; return;
+        end
+    end
+    ok = true;
+end
+
+
+function [t_ref, xy_ref, dxy_ref, ddxy_ref] = timeScaleReference(s_ref, ref_xy, v_max, a_max, min_dt)
+    % s_ref : jarak kumulatif (1D)
+    % ref_xy: Nx2
+    % v_max, a_max: batas kecepatan & percepatan
+    % min_dt: sampling min
+
+    % --- Time scaling based on trapezoidal velocity profile ---
+    total_s = s_ref(end);
+    t_accel = v_max / a_max;
+    s_accel = 0.5 * a_max * t_accel^2;
+
+    if total_s < 2*s_accel
+        t_accel = sqrt(total_s / a_max);
+        t_cruise = 0;
+    else
+        t_cruise = (total_s - 2*s_accel) / v_max;
+    end
+
+    total_time = 2*t_accel + t_cruise;
+
+    % Sampling
+    t_ref = (0:min_dt:total_time)';  
+
+    % Parametric s(t)
+    s_t = zeros(size(t_ref));
+    for i = 1:length(t_ref)
+        t = t_ref(i);
+        if t <= t_accel
+            s_t(i) = 0.5 * a_max * t^2;
+        elseif t <= t_accel + t_cruise
+            s_t(i) = s_accel + v_max * (t - t_accel);
+        else
+            td = t - (t_accel + t_cruise);
+            s_t(i) = s_accel + v_max * t_cruise + v_max * td - 0.5 * a_max * td^2;
+        end
+    end
+
+    % Interpolasi posisi X,Y
+    xy_ref = interp1(s_ref, ref_xy, s_t, 'pchip');
+
+    % Hitung turunan per kolom
+    dx_ref = gradient(xy_ref(:,1), t_ref);
+    dy_ref = gradient(xy_ref(:,2), t_ref);
+    dxy_ref = [dx_ref, dy_ref];
+
+
+    % Turunan kedua
+    ddx_ref = gradient(dx_ref, t_ref);
+    ddy_ref = gradient(dy_ref, t_ref);
+    ddxy_ref = [ddx_ref, ddy_ref];
+
+end
+
+function x_ref = referenceQuery(t, ref)
+    % Pastikan ref.t ada untuk interpolasi
+    if ~isfield(ref, 't')
+        error('ref_data.t tidak ditemukan. Tambahkan t_ref saat membuat ref_data.');
+    end
+
+    % Clamp waktu ke range
+    if t <= ref.t(1)
+        idx = 1;
+    elseif t >= ref.t(end)
+        idx = length(ref.t);
+    else
+        idx = [];
+    end
+
+    % Interpolasi semua variabel sesuai waktu
+    if isempty(idx)
+        x     = interp1(ref.t, ref.x, t, 'linear');
+        y     = interp1(ref.t, ref.y, t, 'linear');
+        z     = interp1(ref.t, ref.z, t, 'linear');
+        phi   = interp1(ref.t, ref.phi, t, 'linear');
+        theta = interp1(ref.t, ref.theta, t, 'linear');
+        psi   = interp1(ref.t, ref.psi, t, 'linear');
+        vx    = interp1(ref.t, ref.vx, t, 'linear');
+        vy    = interp1(ref.t, ref.vy, t, 'linear');
+        vz    = interp1(ref.t, ref.vz, t, 'linear');
+        phidot    = interp1(ref.t, ref.phidot, t, 'linear');
+        thetadot  = interp1(ref.t, ref.thetadot, t, 'linear');
+        psidot    = interp1(ref.t, ref.psidot, t, 'linear');
+    else
+        % Kalau t di luar range, pakai nilai ujung
+        x = ref.x(idx); y = ref.y(idx); z = ref.z(idx);
+        phi = ref.phi(idx); theta = ref.theta(idx); psi = ref.psi(idx);
+        vx = ref.vx(idx); vy = ref.vy(idx); vz = ref.vz(idx);
+        phidot = ref.phidot(idx); thetadot = ref.thetadot(idx); psidot = ref.psidot(idx);
+    end
+
+    % Output persis 12 elemen sesuai model NMPC
+    x_ref = [x; y; z; phi; theta; psi; vx; vy; vz; phidot; thetadot; psidot];
+end
