@@ -134,8 +134,8 @@ ubg = [ubg; zeros(nx,1)];
 
 % --- Generate warm start untuk propagasi awal ---
 arg_w0 = [];
-% x_guess = zeros(nx,1); 
-x_guess = QuadrotorReferenceTrajectory6(0);
+x_guess = zeros(nx,1); 
+% x_guess = QuadrotorReferenceNMPC(0);
 
 % 1. Initial state
 arg_w0 = [arg_w0; x_guess];
@@ -258,14 +258,20 @@ solver_options.ipopt.print_level = 0;
 solver_options.ipopt.mu_strategy = 'adaptive';
 
 solver = nlpsol('solver', 'ipopt', nlp, solver_options);
-% solver.generate('nmpc_solver.c');
-% mex nmpc_solver.c -largeArrayDims -lipopt -lmumps
 
 %% 5. Simulation Loop
 % Initial state: start closer to first reference point
-start_xy = [4.0, 4.0];
-goal_xy  = [46, 30];
+start_xy = [0.0, 0.0];
+goal_xy  = [10, 10];
 mass     = 1.2;
+rad = 0.25;
+
+%% ---------- APF parameters (set di awal, sebelum loop) ----------
+k_att = 0.0001;       % attractive gain
+k_rep = 20.0;       % repulsive gain (tune)
+d0    = 8.0;       % influence distance of obstacles [m]
+v_scale = 0.1;     % scale factor to convert F_total -> v_ref (m/s per N-equivalent)
+max_v_ref = 4.0;   % maximum lin velocity commanded by APF [m/s]
 
 [ref_fun, ref_data] = QuadrotorReferenceNMPC(start_xy, goal_xy, mass,l,rad);
 x_ref_initial = ref_fun(0);
@@ -290,12 +296,15 @@ for i = 1:N_sim
     current_time = (i-1) * dt;
     
     % Get reference trajectory
-    x_ref_at_current_time = QuadrotorReferenceTrajectory6(current_time);
+    % Pastikan sudah hitung reference saat ini
+    x_ref_at_current_time = ref_fun(current_time);
+    x_ref_at_current_time = x_ref_at_current_time(1:nx); % pastikan hanya 12 elemen
     history_x_ref(:, i) = x_ref_at_current_time;
     
     % Build parameter vector
     rate_penalty_value = 0.1;
-    X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory6);
+%     X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceNMPC);
+    X_ref_horizon = generate_reference_horizon(current_time, N, dt, ref_fun);
     actual_params = [current_state; reshape(X_ref_horizon, [], 1)];
     
     % Solve NMPC
@@ -358,7 +367,7 @@ for i = 1:N_sim
 end
 
 % Final reference point
-history_x_ref(:, N_sim + 1) = QuadrotorReferenceTrajectory6(T_sim);
+history_x_ref(:, N_sim + 1) = ref_fun(T_sim);
 
 % results.history_x = history_x;
 % results.history_u = history_u;
@@ -498,8 +507,9 @@ function w_shifted = shift_solution(w_opt, nx, nu, N, M)
 end
 
 function X_ref_horizon = generate_reference_horizon(t0, N, dt, ref_fun)
-    nx = 12;
-    X_ref_horizon = zeros(nx, N+1);
+%     nx = 12;
+%     X_ref_horizon = zeros(nx, N+1);
+    X_ref_horizon = zeros(size(ref_fun(0),1), N+1);
     for k = 0:N
         tk = t0 + k*dt;
         X_ref_horizon(:, k+1) = ref_fun(tk);

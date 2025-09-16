@@ -137,7 +137,8 @@ function [obs_center, obs_radius, ref_fun, ref_data] = QuadrotorReferenceNMPC(st
 
     %% Run Dijkstra to get path indices
     path_idx = dijkstraGrid(G, start_idx, goal_idx);  % Nx2 (row,col)
-    
+
+
     %% Convert path indices to world coordinates
     path_x = x_coords(path_idx(:,2))';
     path_y = y_coords(path_idx(:,1))';

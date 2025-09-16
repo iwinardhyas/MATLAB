@@ -1,6 +1,6 @@
 % 1. Setup CasADi
-% addpath('/home/zee/Erwin/MATLAB/casadi-3.7.1-linux64-matlab2018b');
-addpath('C:\Users\DELL\Documents\MATLAB\casadi-3.7.0-windows64-matlab2018b');
+addpath('/home/zee/Erwin/MATLAB/casadi-3.7.1-linux64-matlab2018b');
+% addpath('C:\Users\DELL\Documents\MATLAB\casadi-3.7.0-windows64-matlab2018b');
 import casadi.*
 
 % Clear workspace to avoid variable conflicts
@@ -258,17 +258,22 @@ solver_options.ipopt.print_level = 0;
 solver_options.ipopt.mu_strategy = 'adaptive';
 
 solver = nlpsol('solver', 'ipopt', nlp, solver_options);
-% solver.generate('nmpc_solver.c');
-% mex nmpc_solver.c -largeArrayDims -lipopt -lmumps
 
 %% 5. Simulation Loop
 % Initial state: start closer to first reference point
-start_xy = [0.0, 0.0];
-goal_xy  = [10, 10];
+start_xy = [0.0, 7.0];
+goal_xy  = [25, 3.0];
 mass     = 1.2;
 rad = 0.25;
 
-[ref_fun, ref_data] = QuadrotorReferenceNMPC(start_xy, goal_xy, mass,l,rad);
+%% ---------- APF parameters (set di awal, sebelum loop) ----------
+k_att = 0.1;       % attractive gain
+k_rep = 1.0;       % repulsive gain (tune)
+d0    = 2.0;       % influence distance of obstacles [m]
+v_scale = 0.4;     % scale factor to convert F_total -> v_ref (m/s per N-equivalent)
+max_v_ref = 4.0;   % maximum lin velocity commanded by APF [m/s]
+
+[obs_center, obs_radius, ref_fun, ref_data] = QuadrotorReferenceNMPC(start_xy, goal_xy, mass,l,rad);
 x_ref_initial = ref_fun(0);
 current_state = zeros(nx, 1);
 current_state(1:3) = x_ref_initial(1:3); % Start at reference position
@@ -280,6 +285,7 @@ N_sim = round(T_sim / dt);
 history_x = zeros(nx, N_sim + 1);
 history_u = zeros(nu, N_sim);
 history_x_ref = zeros(nx, N_sim + 1);
+v_ref_history = zeros(2,N_sim);
 
 % Initialize warm start
 % arg_w0 = w0;
@@ -296,10 +302,69 @@ for i = 1:N_sim
     x_ref_at_current_time = x_ref_at_current_time(1:nx); % pastikan hanya 12 elemen
     history_x_ref(:, i) = x_ref_at_current_time;
     
+    %%APF
+    p = current_state(1:2);  % drone position
+    F_att = -k_att * (p - x_ref_at_current_time(1:2));  % goal_pos global target (3x1)
+    
+    F_rep = zeros(2,1);
+    num_obs = size(obs_center,2);
+    for j = 1:num_obs
+        c = obs_center(1:2,j);
+        r = obs_radius(j);
+        vec = p - c;
+        dist = norm(vec);
+        d = dist - r;  % distance to obstacle surface
+        if d <= 0 || d <1
+            % already inside obstacle -> strong repulsion (clamp to avoid NaN)
+            dir_ = vec / (dist + 1e-6);
+            F_rep = F_rep + k_rep * 1e3 * dir_;
+            status = '!!! MENABRAK !!!';
+        elseif d < d0 || d > 1
+            dir_ = vec / dist;
+            % standard repulsive magnitude
+            mag = k_rep * (1/d - 1/d0) * (1/d^2) * (d/norm(d));
+%             mag = k_rep * (1/d - 1/d0) * (d0/dist);
+            F_rep = F_rep + mag * dir_;
+            status = 'Dekat (zona repulsif)';
+        else
+            status = 'Aman (di luar zona repulsif)';
+        end
+        fprintf('Waktu %.2f s | Obstacle %d | Jarak permukaan d = %.2f m | Status: %s\n', ...
+        i*dt, j, d, status);
+    end
+    F_total = F_att + F_rep;
+    v_ref_local = v_scale * F_total;
+    % limit magnitude
+    vn = norm(v_ref_local);
+    if vn > max_v_ref
+        v_ref_local = v_ref_local / vn * max_v_ref;
+    end
+    % optionally smooth v_ref over time (low-pass)
+    if exist('prev_v_ref','var')
+        alpha_lp = 0.1; % low-pass factor (0..1), tune
+        v_ref = alpha_lp * prev_v_ref + (1-alpha_lp) * v_ref_local;
+    else
+        v_ref = v_ref_local;
+    end
+    prev_v_ref = v_ref;
+    v_ref_history(:,i)=v_ref; 
+%     fprintf('Waktu: %.2f s, Jarak ke Rintangan (d): %.2f m, Magnitudo v_ref: %.2f m/s\n', i, d, vn);
+    fprintf('Waktu %.2f s | v_ref = [%.2f, %.2f] | Magnitudo = %.2f m/s | Jarak ke Rintangan (d): %.2f m | F_att: %.2f | F_rep: %.2f \n\n', ...
+    i*dt, v_ref(1), v_ref(2), vn, d,F_att,F_rep);
+    %%
+    
     % Build parameter vector
-    rate_penalty_value = 0.1;
+%     rate_penalty_value = 0.1;
 %     X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceNMPC);
     X_ref_horizon = generate_reference_horizon(current_time, N, dt, ref_fun);
+        %%
+    for kk = 1:(N+1)
+        % shift only the position rows (1:3)
+        % optionally reduce shift weighting for farther horizon steps (fade-out)
+        weight = exp(-0.1*(kk-1)); 
+        X_ref_horizon(1:2,kk) = X_ref_horizon(1:2,kk) + weight * v_ref * (kk-1)*dt;
+    end
+    %%
     actual_params = [current_state; reshape(X_ref_horizon, [], 1)];
     
     % Solve NMPC
