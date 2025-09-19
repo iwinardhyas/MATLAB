@@ -258,7 +258,7 @@ solver = nlpsol('solver', 'ipopt', nlp, solver_options);
 % mex nmpc_solver.c -largeArrayDims -lipopt -lmumps
 
 %% 5. Simulation Loop
-T_sim = 11;
+T_sim = 12;
 N_sim = T_sim / dt;
 history_x = zeros(nx, N_sim + 1);
 history_u = zeros(nu, N_sim);
@@ -273,22 +273,30 @@ current_state(3) = max(current_state(3), 0.0); % Ensure minimum altitude
 history_x(:, 1) = current_state;
 
 %% ---------- APF parameters (set di awal, sebelum loop) ----------
-k_att = 0.001;       % attractive gain
-k_rep = 20.0;       % repulsive gain (tune)
+k_att = 0.01;       % attractive gain
+k_rep = 15.0;       % repulsive gain (tune)
 d0    = 8.0;       % influence distance of obstacles [m]
-v_scale = 0.2;     % scale factor to convert F_total -> v_ref (m/s per N-equivalent)
-max_v_ref = 5.0;   % maximum lin velocity commanded by APF [m/s]
+v_scale = 0.4;     % scale factor to convert F_total -> v_ref (m/s per N-equivalent)
+max_v_ref = 4.0;   % maximum lin velocity commanded by APF [m/s]
 
 num_obs = 17;          % jumlah obstacle
 obs_radius_val = 0.5; % semua radius sama
 z_pos = 1.0;          % tinggi referensi (anggap obstacle menempel ground, drone terbang di atas)
 
 % posisi obstacle (manual supaya jaraknya tidak terlalu dekat)
-obs_center = [ 6  6  6  8   12   12   15   15   16   18   18   22  23   24  26  29   29 ;   % x
+obs_center = [ 16  16  16  18   22   22   25   25   26   28   28   32  33   34  36  39   39 ;   % x
                9  6  3  1.8  4   6.8   6   1.5  8.2  6.2  2.8  2   4.8  8   4   2.2  6.8 ;   % y
                z_pos*ones(1,num_obs) ];       % z
 
 obs_radius = obs_radius_val * ones(1,num_obs);
+
+% Langkah 1: Tentukan Lingkungan
+[x, y] = meshgrid(0:0.5:10, 0:0.5:10);
+[m, n] = size(x);
+
+U = zeros(m,n);        % potential
+Fx = zeros(m,n);       % force x
+Fy = zeros(m,n);       % force y
 
 %%
 fprintf('Starting NMPC simulation...\n');
@@ -303,9 +311,10 @@ for i = 1:N_sim
     
     %%APF
     p = current_state(1:2);  % drone position
-%     F_att = -k_att * (p - x_ref_at_current_time(1:2));  % goal_pos global target (3x1)
+
     
     F_rep = zeros(2,1);
+    U_rep = 0;
     num_obs = size(obs_center,2);
     for j = 1:num_obs
         c = obs_center(1:2,j);
@@ -313,7 +322,8 @@ for i = 1:N_sim
         vec = p - c;
         dist = norm(vec);
         d = dist - r;  % distance to obstacle surface
-         F_att = -k_att * d * dist;  % goal_pos global target (3x1)
+        U_att = 0.5 * k_att *  dist^2;
+         F_att = -k_att/2*dist^2*(p - x_ref_at_current_time(1:2));
         if d <= 0
             % already inside obstacle -> strong repulsion (clamp to avoid NaN)
             dir_ = vec / (dist + 1e-6);
@@ -322,7 +332,9 @@ for i = 1:N_sim
         elseif d < d0
             dir_ = vec / dist;
             % standard repulsive magnitude
-            mag = k_rep * (1/d0 - 1/r) * (1/d)^2;
+            U_rep_k = 0.5 * k_rep*(1/d - 1/d0)^2;
+            U_rep = U_rep +U_rep_k;
+            mag = k_rep/2*(1/d - 1/d0)^2*(d0/norm(d));
             F_rep = F_rep + mag * dir_;
             status = 'Dekat (zona repulsif)';
         else
@@ -332,6 +344,7 @@ for i = 1:N_sim
         i*dt, j, d, status);
     end
     F_total = F_att + F_rep;
+    
     v_ref_local = v_scale * F_total;
     % limit magnitude
     vn = norm(v_ref_local);
@@ -340,16 +353,17 @@ for i = 1:N_sim
     end
     % optionally smooth v_ref over time (low-pass)
     if exist('prev_v_ref','var')
-        alpha_lp = 0.1; % low-pass factor (0..1), tune
+        alpha_lp = 0.3; % low-pass factor (0..1), tune
         v_ref = alpha_lp * prev_v_ref + (1-alpha_lp) * v_ref_local;
     else
         v_ref = v_ref_local;
     end
     prev_v_ref = v_ref;
     v_ref_history(:,i)=v_ref; 
-%     fprintf('Waktu: %.2f s, Jarak ke Rintangan (d): %.2f m, Magnitudo v_ref: %.2f m/s\n', i, d, vn);
     fprintf('Waktu %.2f s | v_ref = [%.2f, %.2f] | Magnitudo = %.2f m/s | Jarak ke Rintangan (d): %.2f m | F_att: %.2f | F_rep: %.2f \n\n', ...
     i*dt, v_ref(1), v_ref(2), vn, d,F_att,F_rep);
+
+    
     %%
 
     
@@ -429,7 +443,9 @@ end
 
 % Final reference point
 history_x_ref(:, N_sim + 1) = QuadrotorReferenceTrajectory6(T_sim);
-
+disp(['Size of X: ', num2str(size(x))]);
+disp(['Size of Y: ', num2str(size(y))]);
+disp(['Size of U: ', num2str(size(U))]);
 % results.history_x = history_x;
 % results.history_u = history_u;
 % results.history_x_ref = history_x_ref;

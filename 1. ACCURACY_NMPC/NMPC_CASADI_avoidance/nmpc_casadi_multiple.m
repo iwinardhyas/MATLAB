@@ -258,7 +258,7 @@ solver = nlpsol('solver', 'ipopt', nlp, solver_options);
 % mex nmpc_solver.c -largeArrayDims -lipopt -lmumps
 
 %% 5. Simulation Loop
-T_sim = 20;
+T_sim = 12;
 N_sim = T_sim / dt;
 history_x = zeros(nx, N_sim + 1);
 history_u = zeros(nu, N_sim);
@@ -273,7 +273,7 @@ current_state(3) = max(current_state(3), 0.0); % Ensure minimum altitude
 history_x(:, 1) = current_state;
 
 %% ---------- APF parameters (set di awal, sebelum loop) ----------
-k_att = 0.0001;       % attractive gain
+k_att = 0.1;       % attractive gain
 k_rep = 20.0;       % repulsive gain (tune)
 d0    = 8.0;       % influence distance of obstacles [m]
 v_scale = 0.5;     % scale factor to convert F_total -> v_ref (m/s per N-equivalent)
@@ -327,8 +327,8 @@ for i = 1:N_sim
         elseif d < d0 || d > 1
             dir_ = vec / dist;
             % standard repulsive magnitude
-            mag = k_rep * (1/d - 1/d0) * (1/d^2) * (d/norm(d));
-%             mag = k_rep * (1/d - 1/d0) * (d0/dist);
+%             mag = k_rep * (1/d - 1/d0) * (1/d^2) * (d/norm(d));
+            mag = k_rep * (1/d0 - 1/r) * (1/d0)^2;
             F_rep = F_rep + mag * dir_;
             status = 'Dekat (zona repulsif)';
         else
