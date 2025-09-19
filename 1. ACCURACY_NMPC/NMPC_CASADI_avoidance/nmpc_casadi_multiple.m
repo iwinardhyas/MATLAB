@@ -276,7 +276,7 @@ history_x(:, 1) = current_state;
 k_att = 0.0001;       % attractive gain
 k_rep = 20.0;       % repulsive gain (tune)
 d0    = 8.0;       % influence distance of obstacles [m]
-v_scale = 0.2;     % scale factor to convert F_total -> v_ref (m/s per N-equivalent)
+v_scale = 0.5;     % scale factor to convert F_total -> v_ref (m/s per N-equivalent)
 max_v_ref = 5.0;   % maximum lin velocity commanded by APF [m/s]
 
 num_obs = 17;          % jumlah obstacle
