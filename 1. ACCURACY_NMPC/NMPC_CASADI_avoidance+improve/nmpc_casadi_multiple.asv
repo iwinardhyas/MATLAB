@@ -342,6 +342,9 @@ for i = 1:N_sim
         end
         fprintf('Waktu %.2f s | Obstacle %d | Jarak permukaan d = %.2f m | Status: %s\n', ...
         i*dt, j, d, status);
+        U(i, j) = U_att + U_rep;
+        Fx(i,j) = F_att(1) + F_rep(1);
+        Fy(i,j) = F_att(2) + F_rep(2);
     end
     F_total = F_att + F_rep;
     

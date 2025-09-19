@@ -212,3 +212,71 @@ figure; plot3(v_ref_history(1,:), v_ref_history(2,:),z_ref_history);
 xlabel('v_x'); ylabel('v_y');
 title('Arah koreksi dari APF');
 grid on;
+
+
+% Langkah 5: Visualisasi
+% figure;
+% hold on;
+% colormap jet; % Mengatur colormap untuk visualisasi
+% 
+% % Plot Potensial (dengan kontur atau pcolor)
+% pcolor(X, Y, U_total);
+% shading interp; % Menghaluskan plot
+% % colorbar('Location', 'eastoutside', 'Label', {'APF value'});
+% % Corrected colorbar code for older MATLAB versions
+% c = colorbar('Location', 'eastoutside');
+% c.Label.String = 'APF value';
+% 
+% % Plot Gaya (dengan quiver plot)
+% quiver(X, Y, Fx, Fy, 1.5, 'w'); % Panah putih, skala 1.5
+% 
+% % Plot rintangan dan tujuan
+% scatter(50, 6.5, 200, 'm', 'filled', 'Marker', 'x', 'LineWidth', 2);
+% scatter(obs_center(:, 1), obs_center(:, 2), 200, 'r', 'filled', 'Marker', 'o');
+% 
+% % Menambahkan label dan judul
+% xlabel('x [m]');
+% ylabel('y [m]');
+% title('APF force flow');
+% axis equal;
+% grid on;
+% box on;
+% 
+% % Menambahkan legenda
+% legend_entries = [plot(NaN,NaN,'mx', 'MarkerSize', 10, 'LineWidth', 2),...
+%                   plot(NaN,NaN,'ro','MarkerSize', 10),...
+%                   plot(NaN,NaN,'w')];
+% legend(legend_entries, {'goal', 'anchor', 'force vector'}, 'Location', 'NorthEast');
+% 
+% % Menambahkan skala dan arah mata angin
+% text(1, 0.5, '1 m', 'HorizontalAlignment', 'center', 'FontSize', 12, 'Color', 'k');
+% line([0.5, 1.5], [0.4, 0.4], 'Color', 'k', 'LineWidth', 2);
+% text(4.0, 4.5, 'north', 'HorizontalAlignment', 'center', 'FontSize', 10, 'Color', 'k');
+% quiver(4.0, 4.0, 0, 0.5, 0.5, 'k', 'LineWidth', 1.5);
+% 
+% hold off;
+
+% ---------- Plot ----------
+figure; hold on; axis equal;
+
+% Warna potential
+contourf(x,y,U,20,'LineColor','none'); colorbar;
+colormap(jet);
+
+% Quiver untuk arah gaya
+quiver(x,y,Fx,Fy,'w');
+
+% Plot goal
+plot(p_goal(1),p_goal(2),'mx','MarkerSize',12,'LineWidth',2);
+
+% Plot obstacle
+theta = linspace(0,2*pi,100);
+for k = 1:size(obs_center,1)
+    fill(obs_center(k,1)+obs_radius(k)*cos(theta), ...
+         obs_center(k,2)+obs_radius(k)*sin(theta), ...
+         'r','FaceAlpha',0.5,'EdgeColor','none');
+end
+
+title('APF force flow');
+xlabel('X [m]'); ylabel('Y [m]');
+legend('','Goal','Obstacle');
