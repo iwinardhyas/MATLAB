@@ -313,7 +313,7 @@ for i = 1:N_sim
         vec = p - c;
         dist = norm(vec);
         d = dist - r;  % distance to obstacle surface
-         F_att = -k_att * d * dist;  % goal_pos global target (3x1)
+         F_att = -k_att * d *);  % goal_pos global target (3x1)
         if d <= 0
             % already inside obstacle -> strong repulsion (clamp to avoid NaN)
             dir_ = vec / (dist + 1e-6);
