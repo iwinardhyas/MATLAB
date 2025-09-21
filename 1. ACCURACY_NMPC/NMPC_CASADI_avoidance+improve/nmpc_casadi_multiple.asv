@@ -276,27 +276,25 @@ history_x(:, 1) = current_state;
 k_att = 0.01;       % attractive gain
 k_rep = 15.0;       % repulsive gain (tune)
 d0    = 8.0;       % influence distance of obstacles [m]
-v_scale = 0.4;     % scale factor to convert F_total -> v_ref (m/s per N-equivalent)
+v_scale = 0.5;     % scale factor to convert F_total -> v_ref (m/s per N-equivalent)
 max_v_ref = 4.0;   % maximum lin velocity commanded by APF [m/s]
 
-num_obs = 17;          % jumlah obstacle
+num_obs = 1;          % jumlah obstacle
 obs_radius_val = 0.5; % semua radius sama
 z_pos = 1.0;          % tinggi referensi (anggap obstacle menempel ground, drone terbang di atas)
 
 % posisi obstacle (manual supaya jaraknya tidak terlalu dekat)
-obs_center = [ 16  16  16  18   22   22   25   25   26   28   28   32  33   34  36  39   39 ;   % x
-               9  6  3  1.8  4   6.8   6   1.5  8.2  6.2  2.8  2   4.8  8   4   2.2  6.8 ;   % y
+% obs_center = [ 6  6  6  8   12   12   15   15   16   18   18   22  23   24  26  29   30 ;   % x
+%                9  6  3  1.8  4   6.8   6   1.5  8.2  6.2  2.8  2   4.8  8   4   2.2  7.0 ;   % y
+%                z_pos*ones(1,num_obs) ];       % z
+% 
+% obs_radius = obs_radius_val * ones(1,num_obs);
+
+obs_center = [ 6  6  6  8   12   12   15   15   16   18   18   22  23   24  26  29   30 ;   % x
+               9 ;   % y
                z_pos*ones(1,num_obs) ];       % z
 
 obs_radius = obs_radius_val * ones(1,num_obs);
-
-% Langkah 1: Tentukan Lingkungan
-[x, y] = meshgrid(0:0.5:10, 0:0.5:10);
-[m, n] = size(x);
-
-U = zeros(m,n);        % potential
-Fx = zeros(m,n);       % force x
-Fy = zeros(m,n);       % force y
 
 %%
 fprintf('Starting NMPC simulation...\n');
@@ -311,10 +309,7 @@ for i = 1:N_sim
     
     %%APF
     p = current_state(1:2);  % drone position
-
-    
     F_rep = zeros(2,1);
-    U_rep = 0;
     num_obs = size(obs_center,2);
     for j = 1:num_obs
         c = obs_center(1:2,j);
@@ -322,8 +317,7 @@ for i = 1:N_sim
         vec = p - c;
         dist = norm(vec);
         d = dist - r;  % distance to obstacle surface
-        U_att = 0.5 * k_att *  dist^2;
-         F_att = -k_att/2*dist^2*(p - x_ref_at_current_time(1:2));
+        F_att = -k_att/2*dist^2*(p - x_ref_at_current_time(1:2));
         if d <= 0
             % already inside obstacle -> strong repulsion (clamp to avoid NaN)
             dir_ = vec / (dist + 1e-6);
@@ -332,8 +326,6 @@ for i = 1:N_sim
         elseif d < d0
             dir_ = vec / dist;
             % standard repulsive magnitude
-            U_rep_k = 0.5 * k_rep*(1/d - 1/d0)^2;
-            U_rep = U_rep +U_rep_k;
             mag = k_rep/2*(1/d - 1/d0)^2*(d0/norm(d));
             F_rep = F_rep + mag * dir_;
             status = 'Dekat (zona repulsif)';
@@ -342,9 +334,6 @@ for i = 1:N_sim
         end
         fprintf('Waktu %.2f s | Obstacle %d | Jarak permukaan d = %.2f m | Status: %s\n', ...
         i*dt, j, d, status);
-        U(i, j) = U_att + U_rep;
-        Fx(i,j) = F_att(1) + F_rep(1);
-        Fy(i,j) = F_att(2) + F_rep(2);
     end
     F_total = F_att + F_rep;
     
@@ -368,8 +357,6 @@ for i = 1:N_sim
 
     
     %%
-
-    
     % Build parameter vector
     X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory6);
     
@@ -446,9 +433,6 @@ end
 
 % Final reference point
 history_x_ref(:, N_sim + 1) = QuadrotorReferenceTrajectory6(T_sim);
-disp(['Size of X: ', num2str(size(x))]);
-disp(['Size of Y: ', num2str(size(y))]);
-disp(['Size of U: ', num2str(size(U))]);
 % results.history_x = history_x;
 % results.history_u = history_u;
 % results.history_x_ref = history_x_ref;

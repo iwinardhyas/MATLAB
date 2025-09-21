@@ -258,7 +258,7 @@ solver = nlpsol('solver', 'ipopt', nlp, solver_options);
 % mex nmpc_solver.c -largeArrayDims -lipopt -lmumps
 
 %% 5. Simulation Loop
-T_sim = 12;
+T_sim = 20;
 N_sim = T_sim / dt;
 history_x = zeros(nx, N_sim + 1);
 history_u = zeros(nu, N_sim);
@@ -290,6 +290,12 @@ obs_center = [ 6  6  6  8   12   12   15   15   16   18   18   22  23   24  26  
 
 obs_radius = obs_radius_val * ones(1,num_obs);
 
+% obs_center = [ 3.25 5.5;   % x
+%                2.5 1.5;   % y
+%                z_pos*ones(1,num_obs) ];       % z
+% 
+% obs_radius = obs_radius_val * ones(1,num_obs);
+
 %%
 fprintf('Starting NMPC simulation...\n');
 fprintf('Initial state: [%.3f, %.3f, %.3f]\n', current_state(1:3)');
@@ -320,7 +326,8 @@ for i = 1:N_sim
         elseif d < d0
             dir_ = vec / dist;
             % standard repulsive magnitude
-            mag = k_rep/2*(1/d - 1/d0)^2*(d0/norm(d));
+%             mag = k_rep/2*(1/d - 1/d0)^2*(d0/norm(d));
+            mag = k_rep/2*(1/d - 1/d0)^2;
             F_rep = F_rep + mag * dir_;
             status = 'Dekat (zona repulsif)';
         else

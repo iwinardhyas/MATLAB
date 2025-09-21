@@ -146,7 +146,7 @@ h_arrow = plot3(nan,nan,nan,'m-','LineWidth',1.5,'DisplayName','Drone Heading');
 
 %% --- Plot Obstacles (Silinder Hijau Tua) ---
 num_obs = size(obs_center,2);
-obstacle_height = 8;
+obstacle_height = 2;%8;
 safety_scale = 1.2; % safety margin
 
 for j = 1:num_obs
