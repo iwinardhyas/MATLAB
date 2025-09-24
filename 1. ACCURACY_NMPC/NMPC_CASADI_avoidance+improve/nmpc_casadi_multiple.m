@@ -16,6 +16,10 @@ Ixx = 4.85e-3; % Momen inersia
 Iyy = 4.85e-3;
 Izz = 8.81e-3;
 
+save_data = true;
+improvement = false;
+trajectory = 2;
+
 % Pastikan semua parameter adalah scalar numeric
 assert(isnumeric(m) && isscalar(m), 'Mass m must be numeric scalar');
 assert(isnumeric(g) && isscalar(g), 'Gravity g must be numeric scalar');
@@ -135,7 +139,7 @@ ubg = [ubg; zeros(nx,1)];
 % --- Generate warm start untuk propagasi awal ---
 arg_w0 = [];
 % x_guess = zeros(nx,1); 
-x_guess = QuadrotorReferenceTrajectory6(0);
+x_guess = QuadrotorReferenceTrajectory6(0, trajectory);
 
 % 1. Initial state
 arg_w0 = [arg_w0; x_guess];
@@ -266,7 +270,7 @@ history_x_ref = zeros(nx, N_sim + 1);
 v_ref_history = zeros(2,N_sim);
 
 % Initial state: start closer to first reference point
-x_ref_initial = QuadrotorReferenceTrajectory6(0);
+x_ref_initial = QuadrotorReferenceTrajectory6(0, trajectory);
 current_state = zeros(nx, 1);
 current_state(1:3) = x_ref_initial(1:3); % Start at reference position
 current_state(3) = max(current_state(3), 0.0); % Ensure minimum altitude
@@ -284,17 +288,21 @@ obs_radius_val = 0.5; % semua radius sama
 z_pos = 1.0;          % tinggi referensi (anggap obstacle menempel ground, drone terbang di atas)
 
 % posisi obstacle (manual supaya jaraknya tidak terlalu dekat)
-obs_center = [ 6  6  6  8   12   12   15   15   16   18   18   22  23   24  26  29   30 ;   % x
-               9  6  3  1.8  4   6.8   6   1.5  8.2  6.2  2.8  2   4.8  8   4   2.2  7.0 ;   % y
-               z_pos*ones(1,num_obs) ];       % z
+if trajectory == 1
+    num_obs = 17; 
+    obs_center = [ 6  6  6  8   12   12   15   15   16   18   18   22  23   24  26  29   30 ;   % x
+                   9  6  3  1.8  4   6.8   6   1.5  8.2  6.2  2.8  2   4.8  8   4   2.2  7.0 ;   % y
+                   z_pos*ones(1,num_obs) ];       % z
 
-obs_radius = obs_radius_val * ones(1,num_obs);
+    obs_radius = obs_radius_val * ones(1,num_obs);
+else
+    num_obs = 2.0; 
+    obs_center = [ 3.25 6.5;   % x
+                   2.5 1.5;   % y
+                   z_pos*ones(1,num_obs) ];       % z
 
-% obs_center = [ 3.25 5.5;   % x
-%                2.5 1.5;   % y
-%                z_pos*ones(1,num_obs) ];       % z
-% 
-% obs_radius = obs_radius_val * ones(1,num_obs);
+    obs_radius = obs_radius_val * ones(1,num_obs);
+end
 
 %%
 fprintf('Starting NMPC simulation...\n');
@@ -304,11 +312,12 @@ for i = 1:N_sim
     
     current_time = (i-1) * dt;
     % Get reference trajectory
-    x_ref_at_current_time = QuadrotorReferenceTrajectory6(current_time);
+    x_ref_at_current_time = QuadrotorReferenceTrajectory6(current_time, trajectory);
     history_x_ref(:, i) = x_ref_at_current_time;
     
     %%APF
     p = current_state(1:2);  % drone position
+    F_att = -k_att/2*(p - x_ref_at_current_time(1:2));
     F_rep = zeros(2,1);
     num_obs = size(obs_center,2);
     for j = 1:num_obs
@@ -317,7 +326,6 @@ for i = 1:N_sim
         vec = p - c;
         dist = norm(vec);
         d = dist - r;  % distance to obstacle surface
-        F_att = -k_att/2*dist^2*(p - x_ref_at_current_time(1:2));
         if d <= 0
             % already inside obstacle -> strong repulsion (clamp to avoid NaN)
             dir_ = vec / (dist + 1e-6);
@@ -326,8 +334,11 @@ for i = 1:N_sim
         elseif d < d0
             dir_ = vec / dist;
             % standard repulsive magnitude
-%             mag = k_rep/2*(1/d - 1/d0)^2*(d0/norm(d));
-            mag = k_rep/2*(1/d - 1/d0)^2;
+            if improvement == true
+                mag = k_rep/d^2*(1/d - 1/d0)^2*(d0/norm(d))^2;
+            else
+                mag = k_rep*(1/d - 1/d0)^2;
+            end
             F_rep = F_rep + mag * dir_;
             status = 'Dekat (zona repulsif)';
         else
@@ -355,11 +366,12 @@ for i = 1:N_sim
     v_ref_history(:,i)=v_ref; 
     fprintf('Waktu %.2f s | v_ref = [%.2f, %.2f] | Magnitudo = %.2f m/s | Jarak ke Rintangan (d): %.2f m | F_att: %.2f | F_rep: %.2f \n\n', ...
     i*dt, v_ref(1), v_ref(2), vn, d,F_att,F_rep);
+    fprintf('norm---- %.2f s',(d0/norm(d))^2);
 
     
     %%
     % Build parameter vector
-    X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory6);
+    X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory6, trajectory);
     
     %%
     for kk = 1:(N+1)
@@ -433,14 +445,25 @@ for i = 1:N_sim
 end
 
 % Final reference point
-history_x_ref(:, N_sim + 1) = QuadrotorReferenceTrajectory6(T_sim);
-% results.history_x = history_x;
-% results.history_u = history_u;
-% results.history_x_ref = history_x_ref;
-% results.dt = dt;
-% results.method = 'SingleShooting';
-% save('sim_single.mat','results');
+history_x_ref(:, N_sim + 1) = QuadrotorReferenceTrajectory6(T_sim, trajectory);
 
+if save_data == true
+    if improvement == true
+        results.history_x = history_x;
+        results.history_u = history_u;
+        results.history_x_ref = history_x_ref;
+        results.dt = dt;
+        results.method = 'SingleShooting';
+        save('sim_single.mat','results');
+    else
+        results.history_x = history_x;
+        results.history_u = history_u;
+        results.history_x_ref = history_x_ref;
+        results.dt = dt;
+        results.method = 'MultiShooting';
+        save('sim_multi.mat','results');
+    end
+end
 
 fprintf('Simulation completed!\n');
 % fprintf('Rata-rata waktu solver: %.4f s, Maksimum: %.4f s\n', ...
@@ -520,12 +543,12 @@ function w_shifted = shift_solution(w_opt, nx, nu, N, M)
     w_shifted = [w_shifted; x_last];
 end
 
-function X_ref_horizon = generate_reference_horizon(t0, N, dt, ref_fun)
+function X_ref_horizon = generate_reference_horizon(t0, N, dt, ref_fun, trajectory)
     nx = 12;
     X_ref_horizon = zeros(nx, N+1);
     for k = 0:N
         tk = t0 + k*dt;
-        X_ref_horizon(:, k+1) = ref_fun(tk);
+        X_ref_horizon(:, k+1) = ref_fun(tk,trajectory);
     end
 end
 

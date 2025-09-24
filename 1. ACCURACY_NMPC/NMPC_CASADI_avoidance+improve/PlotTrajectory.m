@@ -146,7 +146,11 @@ h_arrow = plot3(nan,nan,nan,'m-','LineWidth',1.5,'DisplayName','Drone Heading');
 
 %% --- Plot Obstacles (Silinder Hijau Tua) ---
 num_obs = size(obs_center,2);
-obstacle_height = 2;%8;
+if trajectory == 1
+    obstacle_height = 8;
+else
+    obstacle_height = 2;%8;
+end
 safety_scale = 1.2; % safety margin
 
 for j = 1:num_obs
@@ -392,3 +396,8 @@ xlabel('X [m]');
 ylabel('Y [m]');
 title('Drone XY Trajectory with Heading Arrows');
 legend('Heading','Trajectory','Location','best');
+
+% figure;
+% grid on;
+drone_Animation(time_vector,x_actual,y_actual,z_actual,history_x(4, :),history_x(5, :),history_x(6, :),num_obs,obstacle_height,obs_center,obs_radius)
+% grid off;

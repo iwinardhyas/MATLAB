@@ -1,4 +1,4 @@
-function animation = drone_Animation(t,x,y,z,roll,pitch,yaw)
+function animation = drone_Animation(t,x,y,z,roll,pitch,yaw, num_obs,z_pos,obs_center,obs_radius)
 % This Animation code is for QuadCopter. Written by Jitendra Singh 
 
 %% Define design parameters
@@ -31,15 +31,34 @@ zp = zeros(1,length(to));
  axis equal;
 %  xlim([-x x]); ylim([-y y]); zlim([0 z]);
 margin = 1;
-xlim([x - margin, x + margin]);
-ylim([y - margin, y + margin]);
-zlim([max(0, z - margin), z + margin]);
+% xlim([x - margin, x + margin]);
+% ylim([y - margin, y + margin]);
+% zlim([max(0, z - margin), z + margin]);
+xlim([min(x) - margin, max(x) + margin]);
+ylim([min(y) - margin, max(y) + margin]);
+zlim([max(0, min(z) - margin), max(z) + margin]);
 
  title('Drone Animation')
  xlabel('X[m]');
  ylabel('Y[m]');
  zlabel('Z[m]');
  hold(gca, 'on');
+ 
+ for j = 1:num_obs
+    c = obs_center(:,j);   % pusat [x; y]
+    r = obs_radius(j);     % radius obstacle
+    h = z_pos;             % tinggi obstacle
+    
+    % buat mesh silinder
+    [Xc, Yc, Zc] = cylinder(r, 50);   % 50 segmen biar halus
+    Zc = Zc * h;                      % scale tinggi
+    Xc = Xc + c(1);                   % geser ke posisi X
+    Yc = Yc + c(2);                   % geser ke posisi Y
+    
+    % plot obstacle
+    surf(Xc, Yc, Zc, 'FaceColor',[0.5 0.5 0.5], 'FaceAlpha',0.5, 'EdgeColor','none');
+    hold on;
+end
  
 %% Design Different parts
 % design the base square
@@ -68,6 +87,12 @@ zlim([max(0, z - margin), z + margin]);
   combinedobject = hgtransform('parent',hg );
   set(drone,'parent',combinedobject)
 %  drawnow
+
+%% Buat VideoWriter object
+videoFile = 'drone_animation.mp4';  % nama file output
+v = VideoWriter(videoFile, 'MPEG-4');
+v.FrameRate = 30;   % fps (bisa disesuaikan)
+open(v);
  
  for i = 1:length(x)
   
@@ -85,8 +110,17 @@ zlim([max(0, z - margin), z + margin]);
       
       %movieVector(i) =  getframe(fig1);
         %delete(b);
-     drawnow
-    pause(0.02);
- end
+    drawnow
+%     pause(0.02);
+    figure(fig1);   % pastikan figure aktif
 
+    % Ambil frame
+    frame = getframe(fig1);
+    writeVideo(v, frame);
+ end
+ 
+close(v);
+disp(['Video disimpan sebagai: ' videoFile]);
+
+ 
  

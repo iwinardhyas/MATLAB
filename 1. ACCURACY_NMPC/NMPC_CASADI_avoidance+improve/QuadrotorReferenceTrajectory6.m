@@ -1,6 +1,9 @@
-function [ xdesired ] = QuadrotorReferenceTrajectory6(t)
-    trajectory_type = 'lurus';
-    
+function [ xdesired ] = QuadrotorReferenceTrajectory6(t, trajectory)
+    if trajectory == 1
+        trajectory_type = 'lurus';
+    else
+        trajectory_type = 'combined_test';
+    end
     xdesired = zeros(12, 1);
     
     switch trajectory_type
