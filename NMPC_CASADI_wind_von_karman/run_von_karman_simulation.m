@@ -68,42 +68,41 @@ wind_direction_deg = atan2(vg, ug) * 180 / pi;
 % wind_direction_deg_smoothed = smoothdata(wind_direction_deg, 'movmean', 100);
 
 
-figure('Name', 'Arah Angin Horizontal');
+figure('Name', 'Horizontal Wind Direction');
 plot(time, wind_direction_deg);
-title('Arah Angin (Derajat)');
-ylabel('Arah (Derajat)');
-xlabel('Waktu (detik)');
+title('Wind Direction (Degrees)');
+ylabel('Direction (Degrees)');
+xlabel('Time (seconds)');
 grid on;
 
 %% Plot Diagnostik ug dan vg
 
-figure('Name', 'Diagnostik Komponen Angin ug dan vg');
+figure('Name', 'Wind Components ug and vg Diagnostics');
 
-% Plot Komponen Angin Longitudinal (ug)
+% Plot Longitudinal Wind Component (ug)
 subplot(2,1,1);
 plot(time, ug, 'b');
 hold on;
-% Tambahkan garis untuk Kecepatan Angin Rata-rata (V_w)
-plot(time, V_w * ones(size(time)), 'r--', 'LineWidth', 2); 
+% Add line for Mean Wind Speed (V_w)
+plot(time, V_w * ones(size(time)), 'r--', 'LineWidth', 2);
 hold off;
-title('Komponen Angin Longitudinal (ug) vs Waktu');
+title('Longitudinal Wind Component (ug) vs Time');
 ylabel('ug (m/s)');
-xlabel('Waktu (detik)');
-legend('ug Simulasi', ['Mean Wind (V_w = ', num2str(V_w), ' m/s)'], 'Location', 'best');
+xlabel('Time (seconds)');
+legend('Simulated ug', ['Mean Wind (V_w = ', num2str(V_w), ' m/s)'], 'Location', 'best');
 grid on;
 
-
-% Plot Komponen Angin Lateral (vg)
+% Plot Lateral Wind Component (vg)
 subplot(2,1,2);
 plot(time, vg, 'b');
 hold on;
-% Tambahkan garis untuk standar deviasi (sigma_v)
-plot(time, zeros(size(time)), 'k--', 'LineWidth', 1); % Garis nol
+% Add lines for standard deviation (sigma_v)
+plot(time, zeros(size(time)), 'k--', 'LineWidth', 1); % Zero line
 plot(time, sigma_v * ones(size(time)), 'r--', 'LineWidth', 2); % +Sigma_v
 plot(time, -sigma_v * ones(size(time)), 'r--', 'LineWidth', 2); % -Sigma_v
 hold off;
-title('Komponen Angin Lateral (vg) vs Waktu');
+title('Lateral Wind Component (vg) vs Time');
 ylabel('vg (m/s)');
-xlabel('Waktu (detik)');
-legend('vg Simulasi', 'Mean', ['+/- Sigma_v (', num2str(sigma_v), ' m/s)'], 'Location', 'best');
+xlabel('Time (seconds)');
+legend('Simulated vg', 'Mean', ['+/- Sigma_v (', num2str(sigma_v), ' m/s)'], 'Location', 'best');
 grid on;
