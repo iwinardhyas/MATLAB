@@ -1,7 +1,7 @@
 function [ xdesired ] = QuadrotorReferenceTrajectory4( t )
 
 % FORCE debug mode - pastikan ini yang dipanggil
-trajectory_type = 'helical';
+trajectory_type = 'figure_eight';
 
 % Inisialisasi output
 xdesired = zeros(12, 1);
@@ -147,7 +147,7 @@ switch trajectory_type
         % Percepatan lateral untuk roll angle
         ay = diff2(amplitude_y, frequency_y, t);
         phi = atan(ay / g);
-        phi = max(min(phi, deg2rad(15)), deg2rad(-15)); % Batasi ke ±15°
+        phi = max(min(phi, deg2rad(25)), deg2rad(-25)); % Batasi ke ±15°
 
         theta = 0; psi = 0;
         phidot = 0; thetadot = 0; psidot = 0;
@@ -173,12 +173,69 @@ switch trajectory_type
         a_centripetal = radius * angular_speed^2;
         phi = atan(a_centripetal / 9.81);
         theta = 0;
-%         psi = atan2(ydot, xdot);
         psi = 0;
 
         phidot = 0; thetadot = 0; psidot = angular_speed;
 
         xdesired = [x;y;z;phi;theta;psi;xdot;ydot;zdot;phidot;thetadot;psidot];
+    case 'figure_eight'
+        % Definisi Trajectory Sinusoidal (Figure Eight)
+        % Xd = [0.5 * sin(0.3*t); 0.3 * sin(0.6*t); 0.4]
+
+        % --- PARAMETER ---
+        g = 9.81;
+        amplitude_x = 0.5;
+        frequency_x = 0.3; % rad/s
+        amplitude_y = 0.3;
+        frequency_y = 0.6; % rad/s
+        altitude_z = 0.4;
+
+        % --- POSISI (x, y, z) ---
+        x = amplitude_x * sin(frequency_x * t);
+        y = amplitude_y * sin(frequency_y * t);
+        z = altitude_z;
+
+        % --- KECEPATAN (xdot, ydot, zdot) ---
+        xdot = amplitude_x * frequency_x * cos(frequency_x * t);
+        ydot = amplitude_y * frequency_y * cos(frequency_y * t);
+        zdot = 0;
+
+        % --- PERCEPATAN (ax, ay) ---
+        % Diperlukan untuk menghitung sudut kemiringan (Roll dan Pitch)
+        ax = -amplitude_x * frequency_x^2 * sin(frequency_x * t);
+        ay = -amplitude_y * frequency_y^2 * sin(frequency_y * t);
+        az = 0; % Ketinggian konstan
+
+        % --- ORIENTASI (phi, theta, psi) ---
+
+        % Hitung Roll (phi) dan Pitch (theta) yang dibutuhkan untuk menghasilkan ax dan ay
+        % F_thrust_x = m * ax = F_total * (R_b_i)_x_3
+        % F_thrust_y = m * ay = F_total * (R_b_i)_y_3
+        % F_thrust_z = m * (az + g) = F_total * (R_b_i)_z_3
+
+        % Jika kita mengasumsikan psi = 0 (menghadap ke depan konstan):
+        % R_b_i * [0; 0; F_total] = [F_total*sin(theta); -F_total*cos(theta)*sin(phi); F_total*cos(theta)*cos(phi)]
+        % Kita perlu sudut roll dan pitch untuk menghasilkan ax dan ay.
+
+        % Pitch (theta) dikontrol oleh Percepatan Sumbu X (ax)
+        theta = asin(ax / g);
+
+        % Roll (phi) dikontrol oleh Percepatan Sumbu Y (ay), dikoreksi oleh theta
+        phi = asin(-ay / (g * cos(theta)));
+
+        % Kita akan asumsikan yaw (psi) tetap nol (hanya bergerak maju/mundur)
+        psi = 0; 
+
+        % --- LAJU SUDUT (phidot, thetadot, psidot) ---
+        % NMPC yang baik seharusnya dapat menghitung turunan ini sendiri
+        % Tetapi untuk referensi, kita asumsikan laju sudut adalah nol (kondisi ideal)
+        % Anda mungkin perlu menurunkan turunan phi dan theta jika NMPC Anda membutuhkan ini secara eksplisit.
+        phidot = 0; 
+        thetadot = 0;
+        psidot = 0; 
+
+        % Gabungkan semua variabel ke dalam vektor Xdesired
+        xdesired = [x; y; z; phi; theta; psi; xdot; ydot; zdot; phidot; thetadot; psidot];
 
     otherwise
         % Default: hovering di ketinggian 1m

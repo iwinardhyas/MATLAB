@@ -15,11 +15,11 @@ dt = 0.1; % Time step lebih kecil
 dt_sub = dt / M;  % pastikan M sudah didefinisikan
 
 
-T_sim = 30;
+T_sim = 50;
 N_sim = T_sim / dt;
 
 % Kecepatan rata-rata angin drone (m/s). Jika drone bergerak, ini adalah True Airspeed.
-V_w = 2; 
+V_w = 0.00001; 
 
 % Intensitas Turbulensi (Standard Deviation)
 sigma_u = 0.2; % Longitudinal (m/s)
@@ -41,23 +41,23 @@ T_sim_wind = T_sim + N * dt;
 wind_data = [ug, vg, wg];
 
 %% 2. Definisikan Parameter Sistem
-m = 0.5;    % Massa (kg)
-g = 9.81;   % Gravitasi (m/s^2)
+massa = 0.5;    % Massa (kg)
+gravitasi = 9.81;   % Gravitasi (m/s^2)
 l = 0.25;   % Panjang lengan (m)
 Ixx = 4.85e-3; % Momen inersia
 Iyy = 4.85e-3;
 Izz = 8.81e-3;
 
 % Pastikan semua parameter adalah scalar numeric
-assert(isnumeric(m) && isscalar(m), 'Mass m must be numeric scalar');
-assert(isnumeric(g) && isscalar(g), 'Gravity g must be numeric scalar');
+assert(isnumeric(massa) && isscalar(massa), 'Mass m must be numeric scalar');
+assert(isnumeric(gravitasi) && isscalar(gravitasi), 'Gravity g must be numeric scalar');
 
 % Dimensi State dan Input
 nx = 12; % [x,y,z,phi,theta,psi,vx_inertial,vy_inertial,vz_inertial,p,q,r]
 nu = 4;  % [f1, f2, f3, f4]
 
 % Hovering thrust per motor (pastikan numeric)
-thrust_hover_value = double(m * g / 4);  % Force as double
+thrust_hover_value = double(massa * gravitasi / 4);  % Force as double
 fprintf('Hover thrust per motor: %.3f N\n', thrust_hover_value);
 
 %% 3. Definisikan Model Dinamika Quadrotor yang Konsisten
@@ -78,6 +78,22 @@ tau_phi = l * (u(2) - u(4));
 tau_theta = l * (u(3) - u(1));
 tau_psi = 0.005 * (-u(1) + u(2) - u(3) + u(4));
 
+% Input [F_total; tau_phi; tau_theta; tau_psi]
+% F_total  = u(1);
+% tau_phi  = u(2);
+% tau_theta = u(3);
+% tau_psi  = u(4);
+
+% % (Opsional) kalau masih mau lihat rotor thrust individual
+% % Parameter quad
+% l = 0.25;    % jarak lengan (m)
+% k = 0.005;   % koefisien yaw moment
+% A = [1  1   1   1;
+%      0  l   0  -l;
+%     -l  0   l   0;
+%     -k  k  -k   k];
+% u_rotor = pinv(A) * [F_total; tau_phi; tau_theta; tau_psi];
+
 % Rotation matrices
 R_b_i = rotz(psi) * roty(theta) * rotx(phi);
 
@@ -88,13 +104,13 @@ thrust_inertial = R_b_i * thrust_body;
 
 V_inertial = x(7:9);
 V_relative = V_inertial - wind_input;
-Cd = diag([1.0; 1.0; 1.0]);
+Cd = diag([0.5; 0.5; 0.3]);
 F_drag_inertial = -Cd * V_relative;
-a_drag_inertial = F_drag_inertial / m;
+a_drag_inertial = F_drag_inertial / massa;
 % Percepatan dalam inertial frame
-ax_inertial = thrust_inertial(1) / m + a_drag_inertial(1);
-ay_inertial = thrust_inertial(2) / m + a_drag_inertial(2);
-az_inertial = thrust_inertial(3) / m - g + a_drag_inertial(3);
+ax_inertial = thrust_inertial(1) / massa + a_drag_inertial(1);
+ay_inertial = thrust_inertial(2) / massa + a_drag_inertial(2);
+az_inertial = thrust_inertial(3) / massa - gravitasi + a_drag_inertial(3);
 
 % Persamaan Euler untuk angular acceleration
 p_dot = (tau_phi + (Iyy - Izz) * q * r) / Ixx;
@@ -136,6 +152,17 @@ J = 0;
 g = {};
 lbw = []; ubw = []; w0 = [];
 lbg = []; ubg = [];
+
+
+% F_hover = massa * gravitasi;  
+% 
+% % Batas input NMPC (disesuaikan)
+% F_min = 0.5 * F_hover;   % minimal 50% hover
+% F_max = 2.0 * F_hover;   % maksimal 200% hover
+% 
+% tau_phi_max = 0.5;    % [Nm] contoh batas roll torque
+% tau_theta_max = 0.5;  % [Nm] contoh batas pitch torque
+% tau_psi_max = 0.2;    % [Nm] contoh batas yaw torque
 
 X_vars = cell(N+1, 1);
 U_vars = cell(N, 1);
@@ -199,8 +226,10 @@ for k = 0:N-1
     U_vars{k+1} = MX.sym(['U_' num2str(k)], nu, 1);
     w = {w{:}, U_vars{k+1}};
     lbw = [lbw; 0.2*thrust_hover_value*ones(nu,1)]; % Min 10% hover thrust
-    ubw = [ubw; 2.0*thrust_hover_value*ones(nu,1)];   % Max 300% hover thrust
-%     arg_w0 = [arg_w0; thrust_hover_value*ones(nu,1)]; % Initialize at hover
+    ubw = [ubw; 5.0*thrust_hover_value*ones(nu,1)];   % Max 300% hover thrust
+%     lbw = [lbw; F_min; -tau_phi_max; -tau_theta_max; -tau_psi_max];
+%     ubw = [ubw; F_max;  tau_phi_max;  tau_theta_max;  tau_psi_max];
+
     
     % Multiple Shooting Integration
     X_current = X_vars{k+1};
@@ -242,11 +271,11 @@ for k = 0:N-1
     ubg = [ubg; zeros(nx,1)];
     
     % Cost function - CONSERVATIVE tuning untuk stabilitas
-    Q = diag([100, 1000, 350, ... % px, py, pz
-                   1, 10, 10, ...   % phi, theta, psi
-                   1, 1, 1, ...      % vx, vy, vz
+    Q = diag([100, 100, 100, ... % px, py, pz
+                   100, 10, 10, ...   % phi, theta, psi
+                   1, 100, 1, ...      % vx, vy, vz
                    1, 1, 1]);  % p, q, r
-    R = diag([0.1, 0.1, 0.1, 0.11]); % Bobot upaya kontrol
+    R = diag([0.0000001, 0.0000001, 0.0000001, 0.0000001]); % Bobot upaya kontrol
     
     J = J + (X_vars{k+1} - X_ref_params{k+1})' * Q * (X_vars{k+1} - X_ref_params{k+1}) + ...
             U_vars{k+1}' * R * U_vars{k+1};
@@ -261,13 +290,14 @@ for k = 0:N-1
     
     % Input rate penalty
     if k > 0
-%         R_rate = 0.1 * eye(nu);
-        tracking_error = norm(X_vars{k+1}(1:3) - X_ref_params{k+1}(1:3)); % error posisi (x,y,z)
-        adapt_factor = 1 + tracking_error;  % semakin besar error, semakin longgar
-        R_rate = (0.1 / adapt_factor) * eye(nu);
+        R_rate = 0.0000001 * eye(nu);
+%         tracking_error = norm(X_vars{k+1}(1:3) - X_ref_params{k+1}(1:3)); % error posisi (x,y,z)
+%         adapt_factor = 1 + tracking_error;  % semakin besar error, semakin longgar
+%         R_rate = (0.1 / adapt_factor) * eye(nu);
 %         R_rate = rate_penalty_param * eye(nu);
 
         J = J + (U_vars{k+1} - U_vars{k})' * R_rate * (U_vars{k+1} - U_vars{k});
+%         J = J + (U_vars{k+1} - U_vars{k})' * (U_vars{k+1} - U_vars{k});
     end
 
 end
@@ -304,7 +334,8 @@ solver_times = [];
 % Initial state: start closer to first reference point
 x_ref_initial = QuadrotorReferenceTrajectory4(0);
 current_state = zeros(nx, 1);
-current_state(1:3) = x_ref_initial(1:3); % Start at reference position
+% current_state(1:3) = x_ref_initial(1:3); % Start at reference position
+current_state(1:3) = [0 0 0]; % Start at reference position
 current_state(3) = max(current_state(3), 0.0); % Ensure minimum altitude
 history_x(:, 1) = current_state;
 
@@ -334,12 +365,12 @@ for i = 1:N_sim
     
     % Solve NMPC
 %     try
-    tic;
+%     tic;
     sol = solver('x0', arg_w0, 'lbx', lbw, 'ubx', ubw, ...
                  'lbg', lbg, 'ubg', ubg, 'p', actual_params);
-    solver_time = toc; % catat waktu solver
-    fprintf('Step %d: Solver time = %.4f s (dt = %.4f s)\n', i, solver_time, dt);
-    solver_times(i) = solver_time;
+%     solver_time = toc; % catat waktu solver
+%     fprintf('Step %d: Solver time = %.4f s (dt = %.4f s)\n', i, solver_time, dt);
+%     solver_times(i) = solver_time;
 
     % Extract optimal control
     opt_w = full(sol.x);
@@ -374,21 +405,30 @@ for i = 1:N_sim
     arg_w0 = shift_solution(opt_w, nx, nu, N, M);
     
     % Progress display with error analysis
-    if mod(i, 20) == 0
-        pos_error = norm(current_state(1:3) - x_ref_at_current_time(1:3));
-        x_error = norm(current_state(1,:) - x_ref_at_current_time(1,:));
-        y_error = norm(current_state(2,:) - x_ref_at_current_time(2,:));
-        z_error = norm(current_state(3,:) - x_ref_at_current_time(3,:));
-        phi_error = norm(current_state(4,:) - x_ref_at_current_time(4,:));
-        theta_error = norm(current_state(5,:) - x_ref_at_current_time(5,:));
-        psi_error = norm(current_state(6,:) - x_ref_at_current_time(6,:));
-        fprintf('Step %d/%d, Pos: [%.2f, %.2f, %.2f], Ref: [%.2f, %.2f, %.2f], Error: %.2f\n', ...
-                i, N_sim, current_state(1), current_state(2), current_state(3), ...
-                x_ref_at_current_time(1), x_ref_at_current_time(2), x_ref_at_current_time(3), pos_error);
-        fprintf('           Thrust: [%.2f, %.2f, %.2f, %.2f] N\n', u_optimal');
-        fprintf('Error_x: %.2f,Error_y: %.2f,Error_z: %.2f,Error_phi: %.2f,Error_theta: %.2f,Error_psi: %.2f\n', ...
-            x_error,y_error,z_error,phi_error,theta_error,psi_error);
-    end
+%     if mod(i, 20) == 0
+%         pos_error = norm(current_state(1:3) - x_ref_at_current_time(1:3));
+%         x_error = norm(current_state(1,:) - x_ref_at_current_time(1,:));
+%         y_error = norm(current_state(2,:) - x_ref_at_current_time(2,:));
+%         z_error = norm(current_state(3,:) - x_ref_at_current_time(3,:));
+%         phi_error = norm(current_state(4,:) - x_ref_at_current_time(4,:));
+%         theta_error = norm(current_state(5,:) - x_ref_at_current_time(5,:));
+%         psi_error = norm(current_state(6,:) - x_ref_at_current_time(6,:));
+%         fprintf('Step %d/%d, Pos: [%.2f, %.2f, %.2f], Ref: [%.2f, %.2f, %.2f], Error: %.2f\n', ...
+%                 i, N_sim, current_state(1), current_state(2), current_state(3), ...
+%                 x_ref_at_current_time(1), x_ref_at_current_time(2), x_ref_at_current_time(3), pos_error);
+%         fprintf('           Thrust: [%.2f, %.2f, %.2f, %.2f] N\n', u_optimal');
+%         fprintf('Error_x: %.2f,Error_y: %.2f,Error_z: %.2f,Error_phi: %.2f,Error_theta: %.2f,Error_psi: %.2f\n', ...
+%             x_error,y_error,z_error,phi_error,theta_error,psi_error);
+%     end
+    u_val = full(u_optimal);   % konversi MX ke double
+    F_val = sum(u_val);
+    tau_phi_val = l * (u_val(2) - u_val(4));
+    tau_theta_val = l * (u_val(3) - u_val(1));
+    tau_psi_val = 0.005 * (-u_val(1) + u_val(2) - u_val(3) + u_val(4));
+
+    fprintf('u = [%.3f %.3f %.3f %.3f], F=%.3f, tau_phi=%.3f, tau_theta=%.3f, tau_psi=%.3f\n',...
+        u_val(1),u_val(2),u_val(3),u_val(4),F_val,tau_phi_val,tau_theta_val,tau_psi_val);
+
 end
 
 % Final reference point

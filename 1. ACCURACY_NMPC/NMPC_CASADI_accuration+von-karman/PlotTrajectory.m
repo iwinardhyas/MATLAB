@@ -89,15 +89,15 @@ legend('u1','u2','u3','u4');   % sesuai nu
 title('History of Control Inputs');
 hold off;
 
-du = diff(history_u,1,2);                % ukuran = nu x (N_sim-1)
-t_du = 0:dt:(size(du,2)-1)*dt;           % panjang sama persis
-figure;
-plot(t_du, du');
-xlabel('Time [s]');
-ylabel('\Delta u');
-legend('du1','du2','du3','du4');
-title('Control Smoothness (Delta U) vs Time');
-grid on;
+% du = diff(history_u,1,2);                % ukuran = nu x (N_sim-1)
+% t_du = 0:dt:(size(du,2)-1)*dt;           % panjang sama persis
+% figure;
+% plot(t_du, du');
+% xlabel('Time [s]');
+% ylabel('\Delta u');
+% legend('du1','du2','du3','du4');
+% title('Control Smoothness (Delta U) vs Time');
+% grid on;
 
 
 
