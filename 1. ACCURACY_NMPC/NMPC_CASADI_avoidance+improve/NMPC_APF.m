@@ -17,8 +17,41 @@ Iyy = 4.85e-3;
 Izz = 8.81e-3;
 
 save_data = false;
-improvement = true;
+improvement = false;
 trajectory = 1;
+
+%% ---------- APF parameters (set di awal, sebelum loop) ----------
+k_att = 0.01;       % attractive gain
+k_rep = 4.0;       % repulsive gain (tune)
+d0    = 4.0;       % influence distance of obstacles [m]
+v_scale = 0.1;     % scale factor to convert F_total -> v_ref (m/s per N-equivalent)
+max_v_ref = 3.0;   % maximum lin velocity commanded by APF [m/s]
+num_obs = 17;          % jumlah obstacle
+obs_radius_val = 0.5; % semua radius sama
+z_pos = 1.0;          % tinggi referensi (anggap obstacle menempel ground, drone terbang di atas)
+w_att = 1;
+w_rep_base = 0.01;
+pos_weight_x = 50;
+pos_weight_y = 50;
+pos_weight_z = 50;
+
+% posisi obstacle (manual supaya jaraknya tidak terlalu dekat)
+if trajectory == 1
+    num_obs = 17; 
+    obs_center = [ 6  6  6  8   12   12   15   15   16   18   18   22  23   24  26  29   30 ;   % x
+                   9  6  3  1.8  4   6.8   6   1.5  8.2  6.2  2.8  2   4.8  8   4   2.2  7.0 ;   % y
+                   z_pos*ones(1,num_obs) ];       % z
+
+    obs_radius = obs_radius_val * ones(1,num_obs);
+else
+    num_obs = 2.0; 
+    obs_center = [ 3.25 6.5;   % x
+                   2.5 1.5;   % y
+                   z_pos*ones(1,num_obs) ];       % z
+
+    obs_radius = obs_radius_val * ones(1,num_obs);
+end
+
 
 % Pastikan semua parameter adalah scalar numeric
 assert(isnumeric(m) && isscalar(m), 'Mass m must be numeric scalar');
@@ -165,7 +198,7 @@ for k = 0:N-1
     U_vars{k+1} = MX.sym(['U_' num2str(k)], nu, 1);
     w = {w{:}, U_vars{k+1}};
     lbw = [lbw; 0.*thrust_hover_value*ones(nu,1)]; % Min 10% hover thrust
-    ubw = [ubw; 5.0*thrust_hover_value*ones(nu,1)];   % Max 300% hover thrust
+    ubw = [ubw; 2.0*thrust_hover_value*ones(nu,1)];   % Max 300% hover thrust
     arg_w0 = [arg_w0; thrust_hover_value*ones(nu,1)]; % Initialize at hover
     
     % Multiple Shooting Integration
@@ -214,9 +247,38 @@ for k = 0:N-1
                    1, 1, 1]);  % p, q, r
     R = diag([1, 1, 1, 1]); % Bobot upaya kontrol
     
-    J = J + (X_vars{k+1} - X_ref_params{k+1})' * Q * (X_vars{k+1} - X_ref_params{k+1}) + ...
-            U_vars{k+1}' * R * U_vars{k+1};
+    %% APF
+    p = X_vars{k+1}(1:2); % posisi xy
+    F_rep = MX.zeros(2,1);
+%     tracking_error = norm(X_vars{k+1}(1:2) - X_ref_params{k+1}(1:2));
+%     F_att = -k_att/2*(tracking_error);
+    num_obs = size(obs_center,2);
+    for j = 1:num_obs
+        c = obs_center(1:2,j);
+        r = obs_radius(j);
+        vec = p - c;
+        dist2 = vec' * vec;           % 1x1 MX
+        dist  = sqrt(dist2 + 1e-12);  % scalar MX, +eps untuk stabilitas
+        dist_surf = dist - r;
+        dir_ = vec / (dist + 1e-6);   % 2x1 MX
+        mag = k_rep * (1./(dist_surf + 1e-6) - 1/d0) .* (1./((dist_surf + 1e-6).^2));
+        F_rep = F_rep + if_else(dist_surf <= d0, mag * dir_, MX.zeros(2,1));
+    end
+%     tracking_error_xy = sqrt((X_vars{k+1}(1) - X_ref_params{k+1}(1))^2 + ...
+%                          (X_vars{k+1}(2) - X_ref_params{k+1}(2))^2);
+    p = X_vars{k+1}(1:2);        % posisi drone saat ini
+    p_goal = X_ref_params{k+1}(1:2);  % posisi goal
+%     F_att = - (k_att/2) * tracking_error_xy;  % scalar MX
+    F_att = - k_att * (p - p_goal);  % 2x1 vector MX
+    %%
+    dist_min = min(dist_surf);
+    w_rep = w_rep_base * tanh(dist_min/d0);
 
+    J = J + (X_vars{k+1} - X_ref_params{k+1})' * Q * (X_vars{k+1} - X_ref_params{k+1}) + ...
+            U_vars{k+1}' * R * U_vars{k+1} + ...
+            (F_att' * F_att) + (F_rep' * F_rep);
+%             w_att*(F_att' * F_att) + w_rep*(F_rep' * F_rep);
+    
       
     for m = 1:M-1
         Q_sub = 0.1 * Q;
@@ -239,7 +301,8 @@ for k = 0:N-1
 end
 
 % Terminal cost
-Qf = 3 * Q; % Higher terminal weight
+% Qf = 100 * Q; % Higher terminal weight
+Qf = diag([pos_weight_x, pos_weight_y, pos_weight_z, zeros(1,nx-3)]);  
 J = J + (X_vars{N+1} - X_ref_params{N+1})' * Qf * (X_vars{N+1} - X_ref_params{N+1});
 
 
@@ -276,33 +339,6 @@ current_state(1:3) = x_ref_initial(1:3); % Start at reference position
 current_state(3) = max(current_state(3), 0.0); % Ensure minimum altitude
 history_x(:, 1) = current_state;
 
-%% ---------- APF parameters (set di awal, sebelum loop) ----------
-k_att = 0.01;       % attractive gain
-k_rep = 15.0;       % repulsive gain (tune)
-d0    = 8.0;       % influence distance of obstacles [m]
-v_scale = 0.5;     % scale factor to convert F_total -> v_ref (m/s per N-equivalent)
-max_v_ref = 5.0;   % maximum lin velocity commanded by APF [m/s]
-
-num_obs = 17;          % jumlah obstacle
-obs_radius_val = 0.5; % semua radius sama
-z_pos = 1.0;          % tinggi referensi (anggap obstacle menempel ground, drone terbang di atas)
-
-% posisi obstacle (manual supaya jaraknya tidak terlalu dekat)
-if trajectory == 1
-    num_obs = 17; 
-    obs_center = [ 6  6  6  8   12   12   15   15   16   18   18   22  23   24  26  29   30 ;   % x
-                   9  6  3  1.8  4   6.8   6   1.5  8.2  6.2  2.8  2   4.8  8   4   2.2  7.0 ;   % y
-                   z_pos*ones(1,num_obs) ];       % z
-
-    obs_radius = obs_radius_val * ones(1,num_obs);
-else
-    num_obs = 2.0; 
-    obs_center = [ 3.25 6.5;   % x
-                   2.5 1.5;   % y
-                   z_pos*ones(1,num_obs) ];       % z
-
-    obs_radius = obs_radius_val * ones(1,num_obs);
-end
 
 %%
 fprintf('Starting NMPC simulation...\n');
@@ -337,7 +373,7 @@ for i = 1:N_sim
             if improvement == true
                 mag = k_rep/d^2*(1/d - 1/d0)^2*(d0/norm(d))^2;
             else
-                mag = k_rep*(1/d - 1/d0)^2;
+                mag = k_rep*(1/d - 1/d0)*(1/d^2);
             end
             F_rep = F_rep + mag * dir_;
             status = 'Dekat (zona repulsif)';
@@ -364,9 +400,9 @@ for i = 1:N_sim
     end
     prev_v_ref = v_ref;
     v_ref_history(:,i)=v_ref; 
-    fprintf('Waktu %.2f s | v_ref = [%.2f, %.2f] | Magnitudo = %.2f m/s | Jarak ke Rintangan (d): %.2f m | F_att: %.2f | F_rep: %.2f \n\n', ...
-    i*dt, v_ref(1), v_ref(2), vn, d,F_att,F_rep);
-    fprintf('norm---- %.2f s',(d0/norm(d))^2);
+%     fprintf('Waktu %.2f s | v_ref = [%.2f, %.2f] | Magnitudo = %.2f m/s | Jarak ke Rintangan (d): %.2f m | F_att: %.2f | F_rep: %.2f \n\n', ...
+%     i*dt, v_ref(1), v_ref(2), vn, d,F_att,F_rep);
+%     fprintf('norm---- %.2f s',(d0/norm(d))^2);
 
     
     %%
@@ -374,12 +410,12 @@ for i = 1:N_sim
     X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory6, trajectory);
     
     %%
-    for kk = 1:(N+1)
-        % shift only the position rows (1:3)
-        % optionally reduce shift weighting for farther horizon steps (fade-out)
-        weight = exp(-0.1*(kk-1)); 
-        X_ref_horizon(1:2,kk) = X_ref_horizon(1:2,kk) + weight * v_ref * (kk-1)*dt;
-    end
+%     for kk = 1:(N+1)
+%         % shift only the position rows (1:3)
+%         % optionally reduce shift weighting for farther horizon steps (fade-out)
+%         weight = exp(-0.1*(kk-1)); 
+%         X_ref_horizon(1:2,kk) = X_ref_horizon(1:2,kk) + weight * v_ref * (kk-1)*dt;
+%     end
     %%
     actual_params = [current_state; reshape(X_ref_horizon, [], 1)];
     

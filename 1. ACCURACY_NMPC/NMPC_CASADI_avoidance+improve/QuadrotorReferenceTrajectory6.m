@@ -123,6 +123,8 @@ function [ xdesired ] = QuadrotorReferenceTrajectory6(t, trajectory)
         % === PARAMETER TRAJEKTORI ===
         p_start = [0; 5.0; 0];
         p_goal = [33; 6.5; 5];
+%         p_start = [6; 11; 0];
+%         p_goal = [35; 6.0; 5];
         T_total = 10; % Waktu total untuk mencapai tujuan (dalam detik)
 
         % === POSISI ===
