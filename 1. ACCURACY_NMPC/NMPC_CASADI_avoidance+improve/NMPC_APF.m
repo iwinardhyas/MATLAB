@@ -16,7 +16,7 @@ Ixx = 4.85e-3; % Momen inersia
 Iyy = 4.85e-3;
 Izz = 8.81e-3;
 
-save_data = false;
+save_data = true;
 improvement = false;
 trajectory = 1;
 
@@ -45,7 +45,7 @@ if trajectory == 1
     obs_radius = obs_radius_val * ones(1,num_obs);
 else
     num_obs = 2.0; 
-    obs_center = [ 3.25 6.5;   % x
+    obs_center = [ 1.25 6.5;   % x
                    2.5 1.5;   % y
                    z_pos*ones(1,num_obs) ];       % z
 
@@ -248,37 +248,33 @@ for k = 0:N-1
     R = diag([1, 1, 1, 1]); % Bobot upaya kontrol
     
     %% APF
-    p = X_vars{k+1}(1:2); % posisi xy
-    F_rep = MX.zeros(2,1);
-%     tracking_error = norm(X_vars{k+1}(1:2) - X_ref_params{k+1}(1:2));
-%     F_att = -k_att/2*(tracking_error);
-    num_obs = size(obs_center,2);
-    for j = 1:num_obs
-        c = obs_center(1:2,j);
-        r = obs_radius(j);
-        vec = p - c;
-        dist2 = vec' * vec;           % 1x1 MX
-        dist  = sqrt(dist2 + 1e-12);  % scalar MX, +eps untuk stabilitas
-        dist_surf = dist - r;
-        dir_ = vec / (dist + 1e-6);   % 2x1 MX
-        mag = k_rep * (1./(dist_surf + 1e-6) - 1/d0) .* (1./((dist_surf + 1e-6).^2));
-        F_rep = F_rep + if_else(dist_surf <= d0, mag * dir_, MX.zeros(2,1));
-    end
-%     tracking_error_xy = sqrt((X_vars{k+1}(1) - X_ref_params{k+1}(1))^2 + ...
-%                          (X_vars{k+1}(2) - X_ref_params{k+1}(2))^2);
+        p = X_vars{k+1}(1:2); % posisi xy
+        F_rep = MX.zeros(2,1);
+        num_obs = size(obs_center,2);
+        for j = 1:num_obs
+            c = obs_center(1:2,j);
+            r = obs_radius(j);
+            vec = p - c;
+            dist2 = vec' * vec;           % 1x1 MX
+            dist  = sqrt(dist2 + 1e-12);  % scalar MX, +eps untuk stabilitas
+            dist_surf = dist - r;
+            dir_ = vec / (dist + 1e-6);   % 2x1 MX
+            if improvement == false
+                mag = k_rep * (1./(dist_surf + 1e-6) - 1/d0) .* (1./((dist_surf + 1e-6).^2));
+            else
+                mag = (k_rep./ (dist_surf.^2 + 1e-6)) * (1./(dist_surf + 1e-6) - 1/d0) .* (d0/d0^2);
+            end
+            F_rep = F_rep + if_else(dist_surf <= d0, mag * dir_, MX.zeros(2,1));
+        end
+
+
     p = X_vars{k+1}(1:2);        % posisi drone saat ini
     p_goal = X_ref_params{k+1}(1:2);  % posisi goal
-%     F_att = - (k_att/2) * tracking_error_xy;  % scalar MX
     F_att = - k_att * (p - p_goal);  % 2x1 vector MX
     %%
-    dist_min = min(dist_surf);
-    w_rep = w_rep_base * tanh(dist_min/d0);
-
     J = J + (X_vars{k+1} - X_ref_params{k+1})' * Q * (X_vars{k+1} - X_ref_params{k+1}) + ...
             U_vars{k+1}' * R * U_vars{k+1} + ...
-            (F_att' * F_att) + (F_rep' * F_rep);
-%             w_att*(F_att' * F_att) + w_rep*(F_rep' * F_rep);
-    
+            (F_att' * F_att) + (F_rep' * F_rep);    
       
     for m = 1:M-1
         Q_sub = 0.1 * Q;
@@ -289,11 +285,14 @@ for k = 0:N-1
     
     % Input rate penalty
     if k > 0
-%         R_rate = 0.1 * eye(nu);
-        tracking_error = norm(X_vars{k+1}(1:3) - X_ref_params{k+1}(1:3)); % error posisi (x,y,z)
-        adapt_factor = 1 + tracking_error;  % semakin besar error, semakin longgar
-        R_rate = (0.1 / adapt_factor) * eye(nu);
+        if improvement == false
+            R_rate = 0.1 * eye(nu);
+        else
+            tracking_error = norm(X_vars{k+1}(1:3) - X_ref_params{k+1}(1:3)); % error posisi (x,y,z)
+            adapt_factor = 1 + tracking_error;  % semakin besar error, semakin longgar
+            R_rate = (0.1 / adapt_factor) * eye(nu);
 %         R_rate = rate_penalty_param * eye(nu);
+        end
 
         J = J + (U_vars{k+1} - U_vars{k})' * R_rate * (U_vars{k+1} - U_vars{k});
     end
@@ -301,8 +300,11 @@ for k = 0:N-1
 end
 
 % Terminal cost
-% Qf = 100 * Q; % Higher terminal weight
-Qf = diag([pos_weight_x, pos_weight_y, pos_weight_z, zeros(1,nx-3)]);  
+if improvement == true
+    Qf = diag([pos_weight_x, pos_weight_y, pos_weight_z, zeros(1,nx-3)]);
+else
+    Qf = 100 * Q; % Higher terminal weight
+end
 J = J + (X_vars{N+1} - X_ref_params{N+1})' * Qf * (X_vars{N+1} - X_ref_params{N+1});
 
 
@@ -351,72 +353,9 @@ for i = 1:N_sim
     x_ref_at_current_time = QuadrotorReferenceTrajectory6(current_time, trajectory);
     history_x_ref(:, i) = x_ref_at_current_time;
     
-    %%APF
-    p = current_state(1:2);  % drone position
-    F_att = -k_att/2*(p - x_ref_at_current_time(1:2));
-    F_rep = zeros(2,1);
-    num_obs = size(obs_center,2);
-    for j = 1:num_obs
-        c = obs_center(1:2,j);
-        r = obs_radius(j);
-        vec = p - c;
-        dist = norm(vec);
-        d = dist - r;  % distance to obstacle surface
-        if d <= 0
-            % already inside obstacle -> strong repulsion (clamp to avoid NaN)
-            dir_ = vec / (dist + 1e-6);
-            F_rep = F_rep + k_rep * 1e3 * dir_;
-            status = '!!! MENABRAK !!!';
-        elseif d < d0
-            dir_ = vec / dist;
-            % standard repulsive magnitude
-            if improvement == true
-                mag = k_rep/d^2*(1/d - 1/d0)^2*(d0/norm(d))^2;
-            else
-                mag = k_rep*(1/d - 1/d0)*(1/d^2);
-            end
-            F_rep = F_rep + mag * dir_;
-            status = 'Dekat (zona repulsif)';
-        else
-            status = 'Aman (di luar zona repulsif)';
-        end
-        fprintf('Waktu %.2f s | Obstacle %d | Jarak permukaan d = %.2f m | Status: %s\n', ...
-        i*dt, j, d, status);
-    end
-    F_total = F_att + F_rep;
-    
-    v_ref_local = v_scale * F_total;
-    % limit magnitude
-    vn = norm(v_ref_local);
-    if vn > max_v_ref
-        v_ref_local = v_ref_local / vn * max_v_ref;
-    end
-    % optionally smooth v_ref over time (low-pass)
-    if exist('prev_v_ref','var')
-        alpha_lp = 0.3; % low-pass factor (0..1), tune
-        v_ref = alpha_lp * prev_v_ref + (1-alpha_lp) * v_ref_local;
-    else
-        v_ref = v_ref_local;
-    end
-    prev_v_ref = v_ref;
-    v_ref_history(:,i)=v_ref; 
-%     fprintf('Waktu %.2f s | v_ref = [%.2f, %.2f] | Magnitudo = %.2f m/s | Jarak ke Rintangan (d): %.2f m | F_att: %.2f | F_rep: %.2f \n\n', ...
-%     i*dt, v_ref(1), v_ref(2), vn, d,F_att,F_rep);
-%     fprintf('norm---- %.2f s',(d0/norm(d))^2);
-
-    
     %%
     % Build parameter vector
     X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory6, trajectory);
-    
-    %%
-%     for kk = 1:(N+1)
-%         % shift only the position rows (1:3)
-%         % optionally reduce shift weighting for farther horizon steps (fade-out)
-%         weight = exp(-0.1*(kk-1)); 
-%         X_ref_horizon(1:2,kk) = X_ref_horizon(1:2,kk) + weight * v_ref * (kk-1)*dt;
-%     end
-    %%
     actual_params = [current_state; reshape(X_ref_horizon, [], 1)];
     
     % Solve NMPC
@@ -467,8 +406,8 @@ for i = 1:N_sim
     vel_nmpc_actual = history_x(7:9, i);
     vn_nmpc_actual = norm(vel_nmpc_actual);
 
-    fprintf('Waktu %.2f s | v_ref (APF): %.2f | v_ref original (NMPC): %.2f | Kecepatan aktual (NMPC): %.2f\n\n',...
-        i*dt, vn, vn_original, vn_nmpc_actual);
+    fprintf('Waktu %.2f s | Kecepatan aktual (NMPC): %.2f\n\n',...
+        i*dt, vn_nmpc_actual);
     
     % Progress display with error analysis
 %     if mod(i, 20) == 0

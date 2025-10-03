@@ -17,7 +17,7 @@ Iyy = 4.85e-3;
 Izz = 8.81e-3;
 
 save_data = false;
-improvement = false;
+improvement = true;
 trajectory = 1;
 
 %% ---------- APF parameters (set di awal, sebelum loop) ----------
@@ -248,27 +248,28 @@ for k = 0:N-1
     R = diag([1, 1, 1, 1]); % Bobot upaya kontrol
     
     %% APF
-    p = X_vars{k+1}(1:2); % posisi xy
-    F_rep = MX.zeros(2,1);
-%     tracking_error = norm(X_vars{k+1}(1:2) - X_ref_params{k+1}(1:2));
-%     F_att = -k_att/2*(tracking_error);
-    num_obs = size(obs_center,2);
-    for j = 1:num_obs
-        c = obs_center(1:2,j);
-        r = obs_radius(j);
-        vec = p - c;
-        dist2 = vec' * vec;           % 1x1 MX
-        dist  = sqrt(dist2 + 1e-12);  % scalar MX, +eps untuk stabilitas
-        dist_surf = dist - r;
-        dir_ = vec / (dist + 1e-6);   % 2x1 MX
-        mag = k_rep * (1./(dist_surf + 1e-6) - 1/d0) .* (1./((dist_surf + 1e-6).^2));
-        F_rep = F_rep + if_else(dist_surf <= d0, mag * dir_, MX.zeros(2,1));
-    end
-%     tracking_error_xy = sqrt((X_vars{k+1}(1) - X_ref_params{k+1}(1))^2 + ...
-%                          (X_vars{k+1}(2) - X_ref_params{k+1}(2))^2);
+        p = X_vars{k+1}(1:2); % posisi xy
+        F_rep = MX.zeros(2,1);
+        num_obs = size(obs_center,2);
+        for j = 1:num_obs
+            c = obs_center(1:2,j);
+            r = obs_radius(j);
+            vec = p - c;
+            dist2 = vec' * vec;           % 1x1 MX
+            dist  = sqrt(dist2 + 1e-12);  % scalar MX, +eps untuk stabilitas
+            dist_surf = dist - r;
+            dir_ = vec / (dist + 1e-6);   % 2x1 MX
+            if improvement == true
+                mag = (k_rep ./ (dist_surf.^2 + 1e-6)) .* ((1./(dist_surf + 1e-6) - 1/d0).^2) .* ((d0 ./ (dist_surf + 1e-6)).^2);
+            else
+                mag = k_rep * (1./(dist_surf + 1e-6) - 1/d0) .* (1./((dist_surf + 1e-6).^2));
+            end
+            F_rep = F_rep + if_else(dist_surf <= d0, mag * dir_, MX.zeros(2,1));
+        end
+
+
     p = X_vars{k+1}(1:2);        % posisi drone saat ini
     p_goal = X_ref_params{k+1}(1:2);  % posisi goal
-%     F_att = - (k_att/2) * tracking_error_xy;  % scalar MX
     F_att = - k_att * (p - p_goal);  % 2x1 vector MX
     %%
     dist_min = min(dist_surf);
@@ -276,8 +277,7 @@ for k = 0:N-1
 
     J = J + (X_vars{k+1} - X_ref_params{k+1})' * Q * (X_vars{k+1} - X_ref_params{k+1}) + ...
             U_vars{k+1}' * R * U_vars{k+1} + ...
-            w_att*(F_att' * F_att) + w_rep*(F_rep' * F_rep);
-    
+            (F_att' * F_att) + (F_rep' * F_rep);    
       
     for m = 1:M-1
         Q_sub = 0.1 * Q;
@@ -288,11 +288,14 @@ for k = 0:N-1
     
     % Input rate penalty
     if k > 0
-%         R_rate = 0.1 * eye(nu);
-        tracking_error = norm(X_vars{k+1}(1:3) - X_ref_params{k+1}(1:3)); % error posisi (x,y,z)
-        adapt_factor = 1 + tracking_error;  % semakin besar error, semakin longgar
-        R_rate = (0.1 / adapt_factor) * eye(nu);
+        if improvement == true
+            R_rate = 0.1 * eye(nu);
+        else
+            tracking_error = norm(X_vars{k+1}(1:3) - X_ref_params{k+1}(1:3)); % error posisi (x,y,z)
+            adapt_factor = 1 + tracking_error;  % semakin besar error, semakin longgar
+            R_rate = (0.1 / adapt_factor) * eye(nu);
 %         R_rate = rate_penalty_param * eye(nu);
+        end
 
         J = J + (U_vars{k+1} - U_vars{k})' * R_rate * (U_vars{k+1} - U_vars{k});
     end
@@ -300,8 +303,11 @@ for k = 0:N-1
 end
 
 % Terminal cost
-Qf = 100 * Q; % Higher terminal weight
-% Qf = diag([pos_weight_x, pos_weight_y, pos_weight_z, zeros(1,nx-3)]);  
+if improvement == true
+    Qf = diag([pos_weight_x, pos_weight_y, pos_weight_z, zeros(1,nx-3)]);
+else
+    Qf = 100 * Q; % Higher terminal weight
+end
 J = J + (X_vars{N+1} - X_ref_params{N+1})' * Qf * (X_vars{N+1} - X_ref_params{N+1});
 
 
