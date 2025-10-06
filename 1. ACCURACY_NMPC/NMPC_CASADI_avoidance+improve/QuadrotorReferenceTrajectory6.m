@@ -123,10 +123,12 @@ function [ xdesired ] = QuadrotorReferenceTrajectory6(t, trajectory)
             
         case 'lurus'
         % === PARAMETER TRAJEKTORI ===
-        p_start = [0; 2.0; 0];
-        p_goal = [33; 6.5; 5];
-%         p_start = [0; 7; 0]; %%% local minima
-%         p_goal = [33; 7; 5];
+%         p_start = [0; 2.0; 0]; %%% jalur melewati coridor dan obstacle
+%         p_goal = [33; 6.5; 5];
+        p_start = [0; 7; 0]; %%% local minima
+        p_goal = [33; 7; 5];
+%         p_start = [4; 10.0; 5]; %%% jalur dekat
+%         p_goal = [33; 2.0; 5];
         T_total = 10; % Waktu total untuk mencapai tujuan (dalam detik)
 
         % === POSISI ===

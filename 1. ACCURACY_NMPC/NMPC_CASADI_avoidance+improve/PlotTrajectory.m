@@ -110,84 +110,84 @@ time_vector = 0:dt:T_sim; % Ini akan memiliki N_sim + 1 titik
 % Misalnya: T_sim = 0:dt_ukf:N_sim_total*dt_ukf;
 
 % % Ekstrak posisi (x,y,z) dari data history
-% x_ref = history_x_ref(1, :);
-% y_ref = history_x_ref(2, :);
-% z_ref = history_x_ref(3, :);
-% 
-% x_actual = history_x(1, :);
-% y_actual = history_x(2, :);
-% z_actual = history_x(3, :);
-% 
-% 
-% figure; hold on; grid on; box on;
-% 
-% %% --- Plot Lintasan Reference dan Aktual ---
-% h_ref   = plot3(x_ref, y_ref, z_ref, 'r--', 'LineWidth', 1.5, 'DisplayName', 'Reference Path');
-% h_actual= plot3(x_actual, y_actual, z_actual, 'b-', 'LineWidth', 1.5, 'DisplayName', 'Drone Path');
-% 
-% %% --- Tandai Start & Finish ---
-% h_start_ref = plot3(x_ref(1), y_ref(1), z_ref(1), 'bo','MarkerFaceColor','b','MarkerSize',8,'DisplayName','Start Reference');
-% h_start_act = plot3(x_actual(1), y_actual(1), z_actual(1), 'ro','MarkerFaceColor','r','MarkerSize',8,'DisplayName','Start Actual');
-% h_finish_ref= plot3(x_ref(end), y_ref(end), z_ref(end), 'bx','LineWidth',2,'MarkerSize',10,'DisplayName','Finish Reference');
-% h_finish_act= plot3(x_actual(end), y_actual(end), z_actual(end), 'rx','LineWidth',2,'MarkerSize',10,'DisplayName','Finish Actual');
-% 
-% %% --- Drone Heading (quiver3) ---
-% N = length(x_actual);
-% step_arrow = max(floor(N/20),1); % sekitar 20 panah
-% scale_arrow = 0.5;
-% for k = 1:step_arrow:N-1
-%     quiver3(x_actual(k), y_actual(k), z_actual(k), ...
-%             x_actual(k+1)-x_actual(k), ...
-%             y_actual(k+1)-y_actual(k), ...
-%             z_actual(k+1)-z_actual(k), ...
-%             scale_arrow,'m','LineWidth',1.5,'MaxHeadSize',2);
-% end
-% h_arrow = plot3(nan,nan,nan,'m-','LineWidth',1.5,'DisplayName','Drone Heading');
-% 
-% %% --- Plot Obstacles (Silinder Hijau Tua) ---
-% num_obs = size(obs_center,2);
-% if trajectory == 1
-%     obstacle_height = 8;
-% else
-%     obstacle_height = 2;%8;
-% end
-% safety_scale = 1.2; % safety margin
-% 
-% for j = 1:num_obs
-%     c = obs_center(:,j);
-%     r = obs_radius(j);
-% 
-%     [x_cyl, y_cyl, z_cyl] = cylinder(r,50); % 50 titik lingkaran
-%     z_cyl = z_cyl * obstacle_height;
-%     x_cyl = x_cyl + c(1);
-%     y_cyl = y_cyl + c(2);
-% 
-%     % Obstacle utama warna hijau tua
-%     surf(x_cyl, y_cyl, z_cyl, 'FaceAlpha',0.5, 'FaceColor',[0 0.5 0], 'EdgeColor','none');
-% 
-%     % Safety margin (transparan, merah tipis)
-%     [x_safe, y_safe, z_safe] = cylinder(r*safety_scale,50);
-%     z_safe = z_safe*obstacle_height;
-%     x_safe = x_safe + c(1);
-%     y_safe = y_safe + c(2);
-%     surf(x_safe, y_safe, z_safe, 'FaceAlpha',0.1,'FaceColor','r','EdgeColor','none','HandleVisibility','off');
-% end
-% h_obs = plot3(nan,nan,nan,'s','MarkerFaceColor','k','MarkerEdgeColor','k','DisplayName','Obstacles');
-% 
-% %% --- Axis, Labels, View ---
-% xlabel('X [m]'); ylabel('Y [m]'); zlabel('Z [m]');
-% title('Drone Trajectory with NMPC + Obstacles','FontSize',12);
-% view(45,25);
-% 
-% % Batasi sumbu Y mulai dari 0
-% ylim([0, max([y_ref y_actual])+1]);
-% xlim([min([x_ref x_actual])-1, max([x_ref x_actual])+1]);
-% zlim([0, max([z_ref z_actual])+1]);
-% 
-% axis equal; grid on;
-% 
-% %% --- Legend (informatif) ---
-% legend([h_actual h_ref h_obs h_arrow h_start_act h_finish_act h_start_ref h_finish_ref], 'Location','bestoutside');
+x_ref = history_x_ref(1, :);
+y_ref = history_x_ref(2, :);
+z_ref = history_x_ref(3, :);
+
+x_actual = history_x(1, :);
+y_actual = history_x(2, :);
+z_actual = history_x(3, :);
+
+
+figure; hold on; grid on; box on;
+
+%% --- Plot Lintasan Reference dan Aktual ---
+h_ref   = plot3(x_ref, y_ref, z_ref, 'r--', 'LineWidth', 1.5, 'DisplayName', 'Reference Path');
+h_actual= plot3(x_actual, y_actual, z_actual, 'b-', 'LineWidth', 1.5, 'DisplayName', 'Drone Path');
+
+%% --- Tandai Start & Finish ---
+h_start_ref = plot3(x_ref(1), y_ref(1), z_ref(1), 'bo','MarkerFaceColor','b','MarkerSize',8,'DisplayName','Start Reference');
+h_start_act = plot3(x_actual(1), y_actual(1), z_actual(1), 'ro','MarkerFaceColor','r','MarkerSize',8,'DisplayName','Start Actual');
+h_finish_ref= plot3(x_ref(end), y_ref(end), z_ref(end), 'bx','LineWidth',2,'MarkerSize',10,'DisplayName','Finish Reference');
+h_finish_act= plot3(x_actual(end), y_actual(end), z_actual(end), 'rx','LineWidth',2,'MarkerSize',10,'DisplayName','Finish Actual');
+
+%% --- Drone Heading (quiver3) ---
+N = length(x_actual);
+step_arrow = max(floor(N/20),1); % sekitar 20 panah
+scale_arrow = 0.5;
+for k = 1:step_arrow:N-1
+    quiver3(x_actual(k), y_actual(k), z_actual(k), ...
+            x_actual(k+1)-x_actual(k), ...
+            y_actual(k+1)-y_actual(k), ...
+            z_actual(k+1)-z_actual(k), ...
+            scale_arrow,'m','LineWidth',1.5,'MaxHeadSize',2);
+end
+h_arrow = plot3(nan,nan,nan,'m-','LineWidth',1.5,'DisplayName','Drone Heading');
+
+%% --- Plot Obstacles (Silinder Hijau Tua) ---
+num_obs = size(obs_center,2);
+if trajectory == 1
+    obstacle_height = 8;
+else
+    obstacle_height = 2;%8;
+end
+safety_scale = 1.2; % safety margin
+
+for j = 1:num_obs
+    c = obs_center(:,j);
+    r = obs_radius(j);
+
+    [x_cyl, y_cyl, z_cyl] = cylinder(r,50); % 50 titik lingkaran
+    z_cyl = z_cyl * obstacle_height;
+    x_cyl = x_cyl + c(1);
+    y_cyl = y_cyl + c(2);
+
+    % Obstacle utama warna hijau tua
+    surf(x_cyl, y_cyl, z_cyl, 'FaceAlpha',0.5, 'FaceColor',[0 0.5 0], 'EdgeColor','none');
+
+    % Safety margin (transparan, merah tipis)
+    [x_safe, y_safe, z_safe] = cylinder(r*safety_scale,50);
+    z_safe = z_safe*obstacle_height;
+    x_safe = x_safe + c(1);
+    y_safe = y_safe + c(2);
+    surf(x_safe, y_safe, z_safe, 'FaceAlpha',0.1,'FaceColor','r','EdgeColor','none','HandleVisibility','off');
+end
+h_obs = plot3(nan,nan,nan,'s','MarkerFaceColor','k','MarkerEdgeColor','k','DisplayName','Obstacles');
+
+%% --- Axis, Labels, View ---
+xlabel('X [m]'); ylabel('Y [m]'); zlabel('Z [m]');
+title('Drone Trajectory with NMPC + Obstacles','FontSize',12);
+view(45,25);
+
+% Batasi sumbu Y mulai dari 0
+ylim([0, max([y_ref y_actual])+1]);
+xlim([min([x_ref x_actual])-1, max([x_ref x_actual])+1]);
+zlim([0, max([z_ref z_actual])+1]);
+
+axis equal; grid on;
+
+%% --- Legend (informatif) ---
+legend([h_actual h_ref h_obs h_arrow h_start_act h_finish_act h_start_ref h_finish_ref], 'Location','bestoutside');
 
 
 figure; hold on; grid on;

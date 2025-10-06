@@ -1,7 +1,7 @@
-function [ xdesired ] = QuadrotorReferenceTrajectory4( t )
+function [ xdesired ] = QuadrotorReferenceTrajectory4( t, trajectory )
 
 % FORCE debug mode - pastikan ini yang dipanggil
-trajectory_type = 'fast_sine';
+trajectory_type = 'helical';
 
 % Inisialisasi output
 xdesired = zeros(12, 1);
@@ -156,7 +156,7 @@ switch trajectory_type
 
     case 'helical'
         % Parameter yang lebih konservatif
-        radius = 1.5;       % Kurangi radius
+        radius = 5.5;       % Kurangi radius
         angular_speed = 0.5; % Kurangi kecepatan angular
         vertical_speed = 0.3; % Kurangi kecepatan vertikal
         start_altitude = 1.0; % Mulai lebih rendah

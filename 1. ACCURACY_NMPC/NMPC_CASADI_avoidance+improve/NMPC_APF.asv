@@ -18,9 +18,9 @@ Izz = 8.81e-3;
 
 save_data = false;
 improvement = true;
-improvement_hybrid = true;
+improvement_hybrid = false;
 improvement_tc = false;
-trajectory = 3;
+trajectory = 1;
 
 %% ---------- APF parameters (set di awal, sebelum loop) ----------
 k_att = 0.01;       % attractive gain
@@ -49,10 +49,10 @@ elseif trajectory == 2
     obs_center = [20;10;z_pos*ones(1,num_obs) ];
     obs_radius = obs_radius_val * ones(1,num_obs);
 else
-    num_obs = 1.0; 
+    num_obs = 2.0; 
     obs_radius_val = 0.5;
-    obs_center = [ 0.0;   % x
-                   6.0;   % y
+    obs_center = [ 4.0 6.5;   % x
+                   2.5 1.5;   % y
                    z_pos*ones(1,num_obs) ];       % z
 
     obs_radius = obs_radius_val * ones(1,num_obs);
@@ -178,7 +178,7 @@ ubg = [ubg; zeros(nx,1)];
 % --- Generate warm start untuk propagasi awal ---
 arg_w0 = [];
 % x_guess = zeros(nx,1); 
-x_guess = QuadrotorReferenceTrajectory4(0, trajectory);
+x_guess = QuadrotorReferenceTrajectory6(0, trajectory);
 
 % 1. Initial state
 arg_w0 = [arg_w0; x_guess];
@@ -356,7 +356,7 @@ history_x_ref = zeros(nx, N_sim + 1);
 v_ref_history = zeros(2,N_sim);
 
 % Initial state: start closer to first reference point
-x_ref_initial = QuadrotorReferenceTrajectory4(0, trajectory);
+x_ref_initial = QuadrotorReferenceTrajectory6(0, trajectory);
 current_state = zeros(nx, 1);
 current_state(1:3) = x_ref_initial(1:3); % Start at reference position
 current_state(3) = max(current_state(3), 0.0); % Ensure minimum altitude
@@ -371,7 +371,7 @@ for i = 1:N_sim
     
     current_time = (i-1) * dt;
     % Get reference trajectory
-    x_ref_at_current_time = QuadrotorReferenceTrajectory4(current_time, trajectory);
+    x_ref_at_current_time = QuadrotorReferenceTrajectory6(current_time, trajectory);
     history_x_ref(:, i) = x_ref_at_current_time;
     
     %%APF
@@ -422,7 +422,7 @@ for i = 1:N_sim
         else
             v_ref = v_ref_local;
         end
-        X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory4, trajectory);
+        X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory6, trajectory);
         for kk = 1:(N+1)
             % shift only the position rows (1:3)
             % optionally reduce shift weighting for farther horizon steps (fade-out)
@@ -434,7 +434,7 @@ for i = 1:N_sim
     %%
     % Build parameter vector
     else
-        X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory4, trajectory);
+        X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory6, trajectory);
     end
         actual_params = [current_state; reshape(X_ref_horizon, [], 1)];
     % Solve NMPC
@@ -499,7 +499,7 @@ for i = 1:N_sim
 end
 
 % Final reference point
-history_x_ref(:, N_sim + 1) = QuadrotorReferenceTrajectory4(T_sim, trajectory);
+history_x_ref(:, N_sim + 1) = QuadrotorReferenceTrajectory6(T_sim, trajectory);
 
 if save_data == true
     if improvement == true && improvement_hybrid == true
