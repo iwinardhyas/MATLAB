@@ -1,6 +1,8 @@
 function [ xdesired ] = QuadrotorReferenceTrajectory6(t, trajectory)
     if trajectory == 1
         trajectory_type = 'lurus';
+    elseif trajectory == 2
+        trajectory_type = 'lurus';
     else
         trajectory_type = 'combined_test';
     end
@@ -121,10 +123,10 @@ function [ xdesired ] = QuadrotorReferenceTrajectory6(t, trajectory)
             
         case 'lurus'
         % === PARAMETER TRAJEKTORI ===
-%         p_start = [0; 5.0; 0];
-%         p_goal = [33; 6.5; 5];
-        p_start = [0; 0; 0];
-        p_goal = [35; 6.0; 5];
+        p_start = [0; 2.0; 0];
+        p_goal = [33; 6.5; 5];
+%         p_start = [0; 7; 0]; %%% local minima
+%         p_goal = [33; 7; 5];
         T_total = 10; % Waktu total untuk mencapai tujuan (dalam detik)
 
         % === POSISI ===

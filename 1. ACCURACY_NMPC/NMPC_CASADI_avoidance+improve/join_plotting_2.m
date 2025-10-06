@@ -1,4 +1,4 @@
-trajectory = 2;
+trajectory = 1;
 
 obs_radius_val = 0.5; % semua radius sama
 z_pos = 1.0;          % tinggi referensi (anggap obstacle menempel ground, drone terbang di atas)

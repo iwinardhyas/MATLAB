@@ -18,6 +18,8 @@ Izz = 8.81e-3;
 
 save_data = true;
 improvement = false;
+improvement_hybrid = false;
+improvement_tc = false;
 trajectory = 1;
 
 %% ---------- APF parameters (set di awal, sebelum loop) ----------
@@ -27,25 +29,29 @@ d0    = 4.0;       % influence distance of obstacles [m]
 v_scale = 0.1;     % scale factor to convert F_total -> v_ref (m/s per N-equivalent)
 max_v_ref = 3.0;   % maximum lin velocity commanded by APF [m/s]
 num_obs = 17;          % jumlah obstacle
-obs_radius_val = 0.5; % semua radius sama
 z_pos = 1.0;          % tinggi referensi (anggap obstacle menempel ground, drone terbang di atas)
-w_att = 1;
-w_rep_base = 0.01;
-pos_weight_x = 50;
-pos_weight_y = 50;
-pos_weight_z = 50;
+base_wx = 35;
+base_wy = 35;
+base_wz = 35;
 
 % posisi obstacle (manual supaya jaraknya tidak terlalu dekat)
 if trajectory == 1
     num_obs = 17; 
+    obs_radius_val = 0.5;
     obs_center = [ 6  6  6  8   12   12   15   15   16   18   18   22  23   24  26  29   30 ;   % x
                    9  6  3  1.8  4   6.8   6   1.5  8.2  6.2  2.8  2   4.8  8   4   2.2  7.0 ;   % y
                    z_pos*ones(1,num_obs) ];       % z
 
     obs_radius = obs_radius_val * ones(1,num_obs);
+elseif trajectory == 2
+    num_obs = 1;
+    obs_radius_val = 0.5;
+    obs_center = [20;10;z_pos*ones(1,num_obs) ];
+    obs_radius = obs_radius_val * ones(1,num_obs);
 else
     num_obs = 2.0; 
-    obs_center = [ 1.25 6.5;   % x
+    obs_radius_val = 0.5;
+    obs_center = [ 4.0 6.5;   % x
                    2.5 1.5;   % y
                    z_pos*ones(1,num_obs) ];       % z
 
@@ -248,6 +254,7 @@ for k = 0:N-1
     R = diag([1, 1, 1, 1]); % Bobot upaya kontrol
     
     %% APF
+    if improvement == true
         p = X_vars{k+1}(1:2); % posisi xy
         F_rep = MX.zeros(2,1);
         num_obs = size(obs_center,2);
@@ -259,22 +266,32 @@ for k = 0:N-1
             dist  = sqrt(dist2 + 1e-12);  % scalar MX, +eps untuk stabilitas
             dist_surf = dist - r;
             dir_ = vec / (dist + 1e-6);   % 2x1 MX
-            if improvement == false
-                mag = k_rep * (1./(dist_surf + 1e-6) - 1/d0) .* (1./((dist_surf + 1e-6).^2));
-            else
-                mag = (k_rep./ (dist_surf.^2 + 1e-6)) * (1./(dist_surf + 1e-6) - 1/d0) .* (d0/d0^2);
+            min_dist = min(inf, dist_surf);
+
+                % Constraint: dist_surf >= d_safe  <=>  dist_surf - d_safe >= 0
+            if improvement_hybrid == true
+                g = {g{:}, dist_surf - 0.5};
+                lbg = [lbg; 0];    % Batasan harus >= 0
+                ubg = [ubg; inf];  % Tidak ada batas atas
             end
+
+            mag = k_rep * (1./(dist_surf + 1e-6) - 1/d0) .* (1./((dist_surf + 1e-6).^2));
+
             F_rep = F_rep + if_else(dist_surf <= d0, mag * dir_, MX.zeros(2,1));
         end
 
 
-    p = X_vars{k+1}(1:2);        % posisi drone saat ini
-    p_goal = X_ref_params{k+1}(1:2);  % posisi goal
-    F_att = - k_att * (p - p_goal);  % 2x1 vector MX
-    %%
-    J = J + (X_vars{k+1} - X_ref_params{k+1})' * Q * (X_vars{k+1} - X_ref_params{k+1}) + ...
-            U_vars{k+1}' * R * U_vars{k+1} + ...
-            (F_att' * F_att) + (F_rep' * F_rep);    
+        p = X_vars{k+1}(1:2);        % posisi drone saat ini
+        p_goal = X_ref_params{k+1}(1:2);  % posisi goal
+        F_att = - k_att * (p - p_goal);  % 2x1 vector MX
+        %%
+        J = J + (X_vars{k+1} - X_ref_params{k+1})' * Q * (X_vars{k+1} - X_ref_params{k+1}) + ...
+                U_vars{k+1}' * R * U_vars{k+1} + ...
+                (F_att' * F_att) + (F_rep' * F_rep);  
+    else
+        J = J + (X_vars{k+1} - X_ref_params{k+1})' * Q * (X_vars{k+1} - X_ref_params{k+1}) + ...
+                U_vars{k+1}' * R * U_vars{k+1};
+    end
       
     for m = 1:M-1
         Q_sub = 0.1 * Q;
@@ -285,14 +302,13 @@ for k = 0:N-1
     
     % Input rate penalty
     if k > 0
-        if improvement == false
-            R_rate = 0.1 * eye(nu);
-        else
-            tracking_error = norm(X_vars{k+1}(1:3) - X_ref_params{k+1}(1:3)); % error posisi (x,y,z)
-            adapt_factor = 1 + tracking_error;  % semakin besar error, semakin longgar
-            R_rate = (0.1 / adapt_factor) * eye(nu);
+        R_rate = 0.1 * eye(nu);
+%         else
+%             tracking_error = norm(X_vars{k+1}(1:3) - X_ref_params{k+1}(1:3)); % error posisi (x,y,z)
+%             adapt_factor = 1 + tracking_error;  % semakin besar error, semakin longgar
+%             R_rate = (0.1 / adapt_factor) * eye(nu);
 %         R_rate = rate_penalty_param * eye(nu);
-        end
+%         end
 
         J = J + (U_vars{k+1} - U_vars{k})' * R_rate * (U_vars{k+1} - U_vars{k});
     end
@@ -300,7 +316,12 @@ for k = 0:N-1
 end
 
 % Terminal cost
-if improvement == true
+if improvement_tc == true
+    adapt_factor = 1 + exp(-min_dist);
+    pos_weight_x = base_wx * adapt_factor;
+    pos_weight_y = base_wy * adapt_factor;
+    pos_weight_z = base_wz * adapt_factor;
+
     Qf = diag([pos_weight_x, pos_weight_y, pos_weight_z, zeros(1,nx-3)]);
 else
     Qf = 100 * Q; % Higher terminal weight
@@ -353,11 +374,69 @@ for i = 1:N_sim
     x_ref_at_current_time = QuadrotorReferenceTrajectory6(current_time, trajectory);
     history_x_ref(:, i) = x_ref_at_current_time;
     
+    %%APF
+    if improvement == false
+        p = current_state(1:2);  % drone position
+        F_att = -k_att/2*(p - x_ref_at_current_time(1:2));
+        F_rep = zeros(2,1);
+        num_obs = size(obs_center,2);
+        for j = 1:num_obs
+            c = obs_center(1:2,j);
+            r = obs_radius(j);
+            vec = p - c;
+            dist = norm(vec);
+            d = dist - r;  % distance to obstacle surface
+            if d <= 0
+                % already inside obstacle -> strong repulsion (clamp to avoid NaN)
+                dir_ = vec / (dist + 1e-6);
+                F_rep = F_rep + k_rep * 1e3 * dir_;
+                status = '!!! MENABRAK !!!';
+            elseif d < d0
+                dir_ = vec / dist;
+                % standard repulsive magnitude
+                if improvement == true
+                    mag = k_rep/d^2*(1/d - 1/d0)^2*(d0/norm(d))^2;
+                else
+                    mag = k_rep*(1/d - 1/d0)^2;
+                end
+                F_rep = F_rep + mag * dir_;
+                status = 'Dekat (zona repulsif)';
+            else
+                status = 'Aman (di luar zona repulsif)';
+            end
+            fprintf('Waktu %.2f s | Obstacle %d | Jarak permukaan d = %.2f m | Status: %s\n', ...
+            i*dt, j, d, status);
+        end
+        F_total = F_att + F_rep;
+
+        v_ref_local = v_scale * F_total;
+        % limit magnitude
+        vn = norm(v_ref_local);
+        if vn > max_v_ref
+            v_ref_local = v_ref_local / vn * max_v_ref;
+        end
+        % optionally smooth v_ref over time (low-pass)
+        if exist('prev_v_ref','var')
+            alpha_lp = 0.3; % low-pass factor (0..1), tune
+            v_ref = alpha_lp * prev_v_ref + (1-alpha_lp) * v_ref_local;
+        else
+            v_ref = v_ref_local;
+        end
+        X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory6, trajectory);
+        for kk = 1:(N+1)
+            % shift only the position rows (1:3)
+            % optionally reduce shift weighting for farther horizon steps (fade-out)
+            weight = exp(-0.1*(kk-1)); 
+            X_ref_horizon(1:2,kk) = X_ref_horizon(1:2,kk) + weight * v_ref * (kk-1)*dt;
+        end
+
+    
     %%
     % Build parameter vector
-    X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory6, trajectory);
-    actual_params = [current_state; reshape(X_ref_horizon, [], 1)];
-    
+    else
+        X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory6, trajectory);
+    end
+        actual_params = [current_state; reshape(X_ref_horizon, [], 1)];
     % Solve NMPC
     try
 %         tic;
@@ -423,20 +502,27 @@ end
 history_x_ref(:, N_sim + 1) = QuadrotorReferenceTrajectory6(T_sim, trajectory);
 
 if save_data == true
-    if improvement == true
+    if improvement == true && improvement_hybrid == true
         results.history_x = history_x;
         results.history_u = history_u;
         results.history_x_ref = history_x_ref;
         results.dt = dt;
         results.method = 'SingleShooting';
         save('sim_single.mat','results');
-    else
+    elseif improvement == true && improvement_hybrid == false
         results.history_x = history_x;
         results.history_u = history_u;
         results.history_x_ref = history_x_ref;
         results.dt = dt;
         results.method = 'MultiShooting';
         save('sim_multi.mat','results');
+    else
+        results.history_x = history_x;
+        results.history_u = history_u;
+        results.history_x_ref = history_x_ref;
+        results.dt = dt;
+        results.method = 'MultiShooting3';
+        save('sim_multi3.mat','results');
     end
 end
 
