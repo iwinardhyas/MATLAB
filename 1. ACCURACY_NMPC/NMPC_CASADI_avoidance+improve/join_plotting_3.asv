@@ -42,9 +42,6 @@ color1 = [0.00,0.30,0.60];
 color2 = [0.80,0.40,0.00];
 color3 = [0.30,0.50,0.30];
 
-start = 1.2;
-finish = 10.6;
-
 %% =========================================================================
 %  FIGURE 1: POSITIONS (px, py, pz)
 %  =========================================================================
@@ -78,12 +75,16 @@ for i = 1:3
     title(pos_titles{i});
     
     % Sumbu X hanya pada plot terakhir
-    xlabel('Time (s)');
-%     set(gca, 'XTickLabel', []); % Sembunyikan label X pada plot atas
+    if i == 3
+        xlabel('Time (s)');
+    else
+        set(gca, 'XTickLabel', []); % Sembunyikan label X pada plot atas
+    end
     
     % Tambahkan legenda hanya pada plot pertama
-    legend([h_single, h_multi, h_multi3, h_ref], 'Location','best', 'NumColumns', 2);
-
+    if i == 3
+        legend([h_single, h_multi, h_multi3, h_ref], 'Location','best', 'NumColumns', 2);
+    end
     hold off;
 end
 
@@ -115,17 +116,24 @@ for i = 1:3
     % Plot Reference Angle
     h_ref = plot(t_single, results_single.history_x_ref(idx,:), 'k--', 'LineWidth', 1.5, 'DisplayName', 'Reference');
     
+    xline(1.2, '--', 'Avoidance Start', 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment','bottom');
+    xline(10.6, '--', 'Avoidance End', 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment','bottom');
+    
     grid on;
     ylabel(angle_labels{i});
     title(angle_titles{i});
     
     % Sumbu X hanya pada plot terakhir
-    xlabel('Time [s]');
-%     set(gca, 'XTickLabel', []); % Sembunyikan label X pada plot atas
+    if i == 3
+        xlabel('Time [s]');
+    else
+        set(gca, 'XTickLabel', []); % Sembunyikan label X pada plot atas
+    end
     
     % Tambahkan legenda hanya pada plot pertama
-    legend([h_single, h_multi, h_multi3, h_ref], 'Location','best', 'NumColumns', 2);
-
+    if i == 1
+        legend([h_single, h_multi, h_multi3, h_ref], 'Location','best', 'NumColumns', 2);
+    end
     hold off;
 end
 
@@ -160,8 +168,8 @@ ylabel('Average Thrust [N]');
 title('Average Thrust Comparison between NMPC-APF Methods');
 
 % (Optional) Mark obstacle avoidance window
-xline(start, '--', 'Avoidance Start', 'Color', [0.5 0.5 0.5], 'LabelHorizontalAlignment', 'center','LabelVerticalAlignment','top');
-xline(finish, '--', 'Avoidance End', 'Color', [0.5 0.5 0.5], 'LabelHorizontalAlignment', 'center','LabelVerticalAlignment','top');
+xline(1.2, '--', 'Avoidance Start', 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment','bottom');
+xline(10.6, '--', 'Avoidance End', 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment','bottom');
 
 legend({'Hybrid NMPC (Cost + Constraint)', ...
         'NMPC (Cost-only APF)', ...
@@ -187,8 +195,8 @@ legend({'Hybrid NMPC', 'Cost-only APF', 'Input-Bias APF'}, 'Location','best');
 set(gca,'FontSize',11);
 
 % (Optional) Mark obstacle avoidance window
-xline(start, '--', 'Avoidance Start', 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment','bottom');
-xline(finish, '--', 'Avoidance End', 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment','bottom');
+xline(1.2, '--', 'Avoidance Start', 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment','bottom');
+xline(10.6, '--', 'Avoidance End', 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment','bottom');
 
 %% === TABLE: Control Effort Metrics ===
 fprintf('\n=== CONTROL EFFORT METRICS ===\n');
@@ -320,7 +328,7 @@ for j = 1:num_obs
     y_safe = y_safe + c(2);
     surf(x_safe, y_safe, z_safe, 'FaceAlpha', 0.1, 'FaceColor', 'r', 'EdgeColor', 'none', 'HandleVisibility', 'off');
 end
-h_obs = plot3(nan, nan, nan, 'ko', 'MarkerFaceColor', 'm', 'MarkerEdgeColor', 'k', 'DisplayName', 'Obstacles');
+h_obs = plot3(nan, nan, nan, 's', 'MarkerFaceColor', 'k', 'MarkerEdgeColor', 'k', 'DisplayName', 'Obstacles');
 
 
 %% --- Axis, Labels, View ---
@@ -340,7 +348,7 @@ zlim([min(all_z)-1, max(all_z)+1]);
 axis equal; grid on;
 
 %% --- Legend (informatif) ---
-legend([h_actual_single, h_actual_multi, h_actual_multi3, h_ref, h_obs, h_start_ref, h_finish_ref], 'Location','bestoutside');
+legend([h_actual_single, h_actual_multi, h_actual_multi3, h_ref, h_arrow_single, h_arrow_multi, h_arrow_multi3, h_obs, h_start_ref, h_finish_ref], 'Location','bestoutside');
 
 
 figure; hold on; grid on; box on;
@@ -443,7 +451,7 @@ grid on;
 box on;
 
 %% --- Legend yang lebih informatif ---
-legend([h_actual_single, h_actual_multi, h_actual_multi3,h_ref, h_start_ref, h_finish_ref, h_obs], 'Location', 'northeast');
+legend([h_actual_single, h_actual_multi, h_ref, h_arrow_single, h_arrow_multi, h_start_ref, h_finish_ref, h_obs], 'Location', 'bestoutside');
 
 
 % Asumsi: 'results_single', 'results_multi', 'obs_center', dan 'obs_radius' telah dimuat
@@ -516,8 +524,8 @@ legend([h_dist_hybrid, h_dist_cost_only, h_dist_input_bias], ...
         'NMPC (Input-Bias APF)'}, ...
        'Location', 'northeast', 'FontSize', 10, 'Box', 'off');
    
-xline(start, '--', 'Start Avoidance', 'Color', [0.2 0.2 0.2]);
-xline(finish, '--', 'End Avoidance', 'Color', [0.2 0.2 0.2]);
+xline(1.2, '--', 'Start Avoidance', 'Color', [0.2 0.2 0.2]);
+xline(10.6, '--', 'End Avoidance', 'Color', [0.2 0.2 0.2]);
 
 
 set(gca, 'FontSize', 11);
@@ -548,8 +556,8 @@ legend([h_speed_hybrid, h_speed_cost_only, h_speed_input_bias], ...
        'Location', 'best');
 
 % (Optional) Mark obstacle avoidance window
-xline(start, '--', 'Avoidance Start', 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment','top');
-xline(finish, '--', 'Avoidance End', 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment','top');
+xline(1.2, '--', 'Avoidance Start', 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment','top');
+xline(10.6, '--', 'Avoidance End', 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment','top');
 
 set(gca, 'FontSize', 11);
 
@@ -595,7 +603,7 @@ for i = 1:3
     xlabel('Time [s]');
     ylabel([components{i} ' [m/s]']);
     
-    legend([h_ref, h_single, h_multi, h_multi3], 'NMPC reference', 'Actual (Hybrid)', 'Actual (Cost-only)', 'Actual (Parameter-level APF)', 'Location', 'northeast');
+    legend([h_ref, h_single, h_multi], 'NMPC reference', 'Actual (Hybrid)', 'Actual (Cost-only)', 'Actual (Parameter-level APF)', 'Location', 'best');
     title(['Quadrotor Linear Velocity in ', strrep(components{i},'_','-')]);
     hold off;
 end
@@ -618,7 +626,6 @@ xlabel('Time [s]');
 ylabel('Speed [m/s]');
 legend('NMPC reference speed', 'Actual speed (Hybrid)', 'Actual speed (Cost-only)', 'Actual speed (Parameter-level APF)', 'Location', 'best');
 title('Comparison of Drone Total Linear Speed');
-
 hold off;
 
 
