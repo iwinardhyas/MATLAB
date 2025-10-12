@@ -8,12 +8,12 @@ z_pos = 0.0;          % tinggi referensi (anggap obstacle menempel ground, drone
 % posisi obstacle (manual supaya jaraknya tidak terlalu dekat)
 if trajectory == 1
     num_obs = 17; 
-    obs_center = [ 6  6  6  8   12   12   15   15   16   18   18   22  23   24  26  29   30 ;   % x
-                   9  6  3  1.8  4   6.8   6   1.5  8.2  6.2  2.8  2   4.8  8   4   2.2  7.0 ;   % y
-                   z_pos*ones(1,num_obs) ];       % z
 %     obs_center = [ 6  6  6  8   12   12   15   15   16   18   18   22  23   24  26  29   30 ;   % x
-%                    9  5.5  3  1.8  4.5   5.5   5   1.5  8.2  6.2  2.8  2   4.8  8   4   2.2  7.0 ;   % y
-%                    z_pos*ones(1,num_obs) ]; 
+%                    9  6  3  1.8  4   6.8   6   1.5  8.2  6.2  2.8  2   4.8  8   4   2.2  7.0 ;   % y
+%                    z_pos*ones(1,num_obs) ];       % z
+    obs_center = [ 6  9  6  8   12   12   15   15   16   18   18   22  23.5   24  26  29   30 ;   % x
+                       9  5.5  3  1.8  4   6   5   1.5  8.2  6.2  2.8  2   5  8   5   2.2  7.0 ;   % y
+                       z_pos*ones(1,num_obs) ];       % z done
 
     obs_radius = obs_radius_val * ones(1,num_obs);
 else
@@ -64,8 +64,8 @@ for i = 1:3
     hold on;
     
     % Plot Actual Trajectories
-    h_single = plot(t_single, results_single.history_x(idx,:), 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'Hybrid APF–NMPC');
-    h_multi = plot(t_multi, results_multi.history_x(idx,:), 'Color', color2, 'LineWidth', 1.5, 'DisplayName', 'Cost-Augmented APF–NMPC');
+    h_single = plot(t_single, results_single.history_x(idx,:), 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'Adaptive Weighting NMPC');
+    h_multi = plot(t_multi, results_multi.history_x(idx,:), 'Color', color2, 'LineWidth', 1.5, 'DisplayName', 'Fixed Weighting NMPC');
     
     % Plot Reference Trajectory
     h_ref = plot(t_single, results_single.history_x_ref(idx,:), 'k--', 'LineWidth', 1.5, 'DisplayName', ref_labels{i});
@@ -105,8 +105,8 @@ for i = 1:3
     hold on;
     
     % Plot Actual Angles
-    h_single = plot(t_single, results_single.history_x(idx,:), 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'Hybrid APF–NMPC');
-    h_multi = plot(t_multi, results_multi.history_x(idx,:), 'Color', color2, 'LineWidth', 1.5, 'DisplayName', 'Cost-Augmented APF–NMPC');
+    h_single = plot(t_single, results_single.history_x(idx,:), 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'Adaptive Weighting NMPC');
+    h_multi = plot(t_multi, results_multi.history_x(idx,:), 'Color', color2, 'LineWidth', 1.5, 'DisplayName', 'Fixed Weighting NMPC');
     
     % Plot Reference Angle
     h_ref = plot(t_single, results_single.history_x_ref(idx,:), 'k--', 'LineWidth', 1.5, 'DisplayName', 'Reference');
@@ -154,8 +154,8 @@ title('Average Thrust Comparison between NMPC-APF Methods');
 % xline(start, '--', 'Avoidance Start', 'Color', [0.5 0.5 0.5], 'LabelHorizontalAlignment', 'center','LabelVerticalAlignment','top');
 % xline(finish, '--', 'Avoidance End', 'Color', [0.5 0.5 0.5], 'LabelHorizontalAlignment', 'center','LabelVerticalAlignment','top');
 
-legend({'Hybrid APF–NMPC', ...
-        'Cost-Augmented APF–NMPC'}, ...
+legend({'Adaptive Weighting NMPC', ...
+        'Fixed Weighting NMPC'}, ...
         'Location','best');
 set(gca,'FontSize',11);
 
@@ -172,7 +172,7 @@ plot(t_u_multi,  results_multi.history_u(1,:),  'Color', color2, 'LineWidth', 1.
 xlabel('Time [s]');
 ylabel('Thrust Motor 1 [N]');
 title('Thrust Command Comparison (Representative Motor)');
-legend({'Hybrid APF–NMPC', 'Cost-Augmented APF–NMPC'}, 'Location','best');
+legend({'Adaptive Weighting NMPC', 'Fixed Weighting NMPC'}, 'Location','best');
 set(gca,'FontSize',11);
 
 % (Optional) Mark obstacle avoidance window
@@ -183,12 +183,12 @@ set(gca,'FontSize',11);
 fprintf('\n=== CONTROL EFFORT METRICS ===\n');
 fprintf('%-35s %-15s %-15s %-15s\n', 'Method', 'Σ||u||²', 'Mean Thrust [N]', 'Max Thrust [N]');
 fprintf('---------------------------------------------------------------------------------\n');
-fprintf('%-35s %-15.3f %-15.3f %-15.3f\n', 'Hybrid APF–NMPC', J_u_single, mean_u_single, max_u_single);
-fprintf('%-35s %-15.3f %-15.3f %-15.3f\n', 'Cost-Augmented APF–NMPC',         J_u_multi,  mean_u_multi,  max_u_multi);
+fprintf('%-35s %-15.3f %-15.3f %-15.3f\n', 'Adaptive Weighting NMPC', J_u_single, mean_u_single, max_u_single);
+fprintf('%-35s %-15.3f %-15.3f %-15.3f\n', 'Fixed Weighting NMPC',         J_u_multi,  mean_u_multi,  max_u_multi);
 
 %% === (Optional) Convert metrics to table for plotting/export ===
 ControlEffortTable = table( ...
-    {'Hybrid APF–NMPC'; 'Cost-Augmented APF–NMPC'}, ...
+    {'Adaptive Weighting NMPC'; 'Fixed Weighting NMPC'}, ...
     [J_u_single; J_u_multi], ...
     [mean_u_single; mean_u_multi], ...
     [max_u_single; max_u_multi], ...
@@ -218,10 +218,10 @@ figure; hold on; grid on; box on;
 h_ref = plot3(x_ref_single, y_ref_single, z_ref_single, 'k--', 'LineWidth', 1.5, 'DisplayName', 'Reference Path');
 
 % Plot lintasan metode pertama (Single)
-h_actual_single = plot3(x_actual_single, y_actual_single, z_actual_single, 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'Hybrid APF–NMPC');
+h_actual_single = plot3(x_actual_single, y_actual_single, z_actual_single, 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'Adaptive Weighting NMPC');
 
 % Plot lintasan metode kedua (Multi)
-h_actual_multi = plot3(x_actual_multi, y_actual_multi, z_actual_multi, 'Color', color2, 'LineWidth', 1.5, 'DisplayName', 'Cost-Augmented APF–NMPC');
+h_actual_multi = plot3(x_actual_multi, y_actual_multi, z_actual_multi, 'Color', color2, 'LineWidth', 1.5, 'DisplayName', 'Fixed Weighting NMPC');
 
 %% --- Tandai Start & Finish ---
 % Titik awal dan akhir untuk metode pertama
@@ -260,8 +260,8 @@ for k = 1:step_arrow_multi:N_multi-1
             scale_arrow, 'Color', color2, 'LineWidth', 1.5, 'MaxHeadSize', 2, 'HandleVisibility', 'off');
 end
 
-h_arrow_single = plot3(nan, nan, nan, 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'Hybrid APF–NMPC');
-h_arrow_multi = plot3(nan, nan, nan, 'Color', color2, 'LineWidth', 1.5, 'DisplayName', 'Cost-Augmented APF–NMPC');
+h_arrow_single = plot3(nan, nan, nan, 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'Adaptive Weighting NMPC');
+h_arrow_multi = plot3(nan, nan, nan, 'Color', color2, 'LineWidth', 1.5, 'DisplayName', 'Fixed Weighting NMPC');
 
 %% --- Plot Obstacles (Silinder Hijau Tua) ---
 num_obs = size(obs_center,2);
@@ -316,8 +316,8 @@ figure; hold on; grid on; box on;
 
 %% --- Plot Lintasan Referensi dan Aktual ---
 h_ref = plot(x_ref, y_ref, 'k--', 'LineWidth', 1.5, 'DisplayName', 'Reference Path'); % Jalur referensi
-h_actual_single = plot(x_actual_single, y_actual_single, 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'Hybrid APF–NMPC'); % Jalur Single-NMPC
-h_actual_multi = plot(x_actual_multi, y_actual_multi, 'Color', color2, 'LineWidth', 1.5, 'DisplayName', 'Cost-Augmented APF–NMPC'); % Jalur Multi-NMPC
+h_actual_single = plot(x_actual_single, y_actual_single, 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'Adaptive Weighting NMPC'); % Jalur Single-NMPC
+h_actual_multi = plot(x_actual_multi, y_actual_multi, 'Color', color2, 'LineWidth', 1.5, 'DisplayName', 'Fixed Weighting NMPC'); % Jalur Multi-NMPC
 
 %% --- Obstacles (lingkaran 2D) ---
 % --- Inisialisasi Parameter ---
@@ -391,8 +391,8 @@ end
 % h_arrow_multi = plot(nan, nan, 'Color', color3, 'LineWidth', 1.5, 'DisplayName', 'Clasic APF Heading');
 
 
-h_arrow_single = plot(nan, nan, 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'Hybrid APF–NMPC');
-h_arrow_multi = plot(nan, nan, 'Color', color2, 'LineWidth', 1.5, 'DisplayName', 'Cost-Augmented APF–NMPC');
+h_arrow_single = plot(nan, nan, 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'Adaptive Weighting NMPC');
+h_arrow_multi = plot(nan, nan, 'Color', color2, 'LineWidth', 1.5, 'DisplayName', 'Fixed Weighting NMPC');
 
 %% --- Axis, Labels, Title ---
 xlabel('X [m]');
@@ -493,8 +493,8 @@ h_safe_line = yline(0.5, 'k', 'LineWidth', 1.5, 'Label', 'safety boundary (d{saf
 
 % Legend for Distance Plot
 legend([h_dist_hybrid, h_dist_cost_only], ...
-       {'Hybrid APF–NMPC', ...
-        'Cost-Augmented APF–NMPC'}, ...
+       {'Adaptive Weighting NMPC', ...
+        'Fixed Weighting NMPC'}, ...
        'Location', 'northeast', 'FontSize', 10, 'Box', 'off');
    
 % xline(start, '--', 'Start Avoidance', 'Color', [0.2 0.2 0.2]);
@@ -524,7 +524,7 @@ ylim([0, max(all_speed) * 1.2]);
 
 % Legend for Speed Plot
 legend([h_speed_hybrid, h_speed_cost_only], ...
-       {'Hybrid APF–NMPC', 'Cost-Augmented APF–NMPC'}, ...
+       {'Adaptive Weighting NMPC', 'Fixed Weighting NMPC'}, ...
        'Location', 'best');
 
 % (Optional) Mark obstacle avoidance window
@@ -570,7 +570,7 @@ for i = 1:3
     xlabel('Time [s]');
     ylabel([components{i} ' [m/s]']);
     
-    legend([h_ref, h_single, h_multi], 'NMPC reference', 'Hybrid APF–NMPC', 'Cost-Augmented APF–NMPC', 'Location', 'northeast');
+    legend([h_ref, h_single, h_multi], 'NMPC reference', 'Adaptive Weighting NMPC', 'Fixed Weighting NMPC', 'Location', 'northeast');
     title(['Quadrotor Linear Velocity in ', strrep(components{i},'_','-')]);
     hold off;
 end
@@ -589,7 +589,7 @@ plot(t_multi, v_multi_norm, 'Color', color2, 'LineWidth', 1.5);
 grid on; box on;
 xlabel('Time [s]');
 ylabel('Speed [m/s]');
-legend('NMPC reference speed', 'Hybrid APF–NMPC', 'Cost-Augmented APF–NMPC', 'Location', 'best');
+legend('NMPC reference speed', 'Adaptive Weighting NMPC', 'Fixed Weighting NMPC', 'Location', 'best');
 title('Comparison of Drone Total Linear Speed');
 
 hold off;
@@ -610,7 +610,7 @@ V_multi  = computeViolation(results_multi,  obs_center, obs_radius);
 
 
 %% === Buat Tabel Evaluasi ===
-Method = {'Hybrid APF–NMPC'; 'Cost-Augmented APF–NMPC'};
+Method = {'Adaptive Weighting NMPC'; 'Fixed Weighting NMPC'};
 RMSE = [RMSE_single; RMSE_multi];
 MAE  = [MAE_single; MAE_multi];
 MAXE = [MAX_single; MAX_multi];
