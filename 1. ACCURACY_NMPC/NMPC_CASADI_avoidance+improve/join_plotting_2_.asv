@@ -1,7 +1,7 @@
 trajectory = 1;
 
 obs_radius_val = 0.5; % semua radius sama
-z_pos = 1.0;          % tinggi referensi (anggap obstacle menempel ground, drone terbang di atas)
+z_pos = 0.0;          % tinggi referensi (anggap obstacle menempel ground, drone terbang di atas)
 
 % posisi obstacle (manual supaya jaraknya tidak terlalu dekat)
 if trajectory == 1
@@ -9,6 +9,9 @@ if trajectory == 1
     obs_center = [ 6  6  6  8   12   12   15   15   16   18   18   22  23   24  26  29   30 ;   % x
                    9  6  3  1.8  4   6.8   6   1.5  8.2  6.2  2.8  2   4.8  8   4   2.2  7.0 ;   % y
                    z_pos*ones(1,num_obs) ];       % z
+%     obs_center = [ 6  6  6  8   12   12   15   15   16   18   18   22  23   24  26  29   30 ;   % x
+%                    9  5.5  3  1.8  4.5   5.5   5   1.5  8.2  6.2  2.8  2   4.8  8   4   2.2  7.0 ;   % y
+%                    z_pos*ones(1,num_obs) ]; 
 
     obs_radius = obs_radius_val * ones(1,num_obs);
 else
@@ -23,12 +26,10 @@ end
 % Load hasil simulasi
 load('sim_single.mat','results'); results_single = results;
 load('sim_multi.mat','results');  results_multi  = results;
-load('sim_multi3.mat','results');  results_multi3  = results;
 
 % --- Time vector untuk state (N_sim+1) ---
 t_single = (0:size(results_single.history_x,2)-1)*results_single.dt;
 t_multi  = (0:size(results_multi.history_x,2)-1)*results_multi.dt;
-t_multi3  = (0:size(results_multi3.history_x,2)-1)*results_multi3.dt;
 x_ref = results_single.history_x_ref(1,:);
 y_ref = results_single.history_x_ref(2,:);
 z_ref = results_single.history_x_ref(3,:);
@@ -36,11 +37,9 @@ z_ref = results_single.history_x_ref(3,:);
 % --- Time vector untuk kontrol (N_sim) ---
 t_u_single = (0:size(results_single.history_u,2)-1) * results_single.dt;
 t_u_multi  = (0:size(results_multi.history_u,2)-1) * results_multi.dt;
-t_u_multi3  = (0:size(results_multi3.history_u,2)-1) * results_multi3.dt;
 
 color1 = [0.00,0.30,0.60];
 color2 = [0.80,0.40,0.00];
-color3 = [0.30,0.50,0.30];
 
 %% =========================================================================
 %  FIGURE 1: POSITIONS (px, py, pz)
@@ -63,9 +62,8 @@ for i = 1:3
     hold on;
     
     % Plot Actual Trajectories
-    h_single = plot(t_single, results_single.history_x(idx,:), 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'Hybrid');
-    h_multi = plot(t_multi, results_multi.history_x(idx,:), 'Color', color2, 'LineWidth', 1.5, 'DisplayName', 'Cost-only APF');
-    h_multi3 = plot(t_multi3, results_multi3.history_x(idx,:), 'Color', color3, 'LineWidth', 1.5, 'DisplayName', 'Input-Bias APF');
+    h_single = plot(t_single, results_single.history_x(idx,:), 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'Hybrid APF–NMPC');
+    h_multi = plot(t_multi, results_multi.history_x(idx,:), 'Color', color2, 'LineWidth', 1.5, 'DisplayName', 'Cost-Augmented APF–NMPC');
     
     % Plot Reference Trajectory
     h_ref = plot(t_single, results_single.history_x_ref(idx,:), 'k--', 'LineWidth', 1.5, 'DisplayName', ref_labels{i});
@@ -75,16 +73,12 @@ for i = 1:3
     title(pos_titles{i});
     
     % Sumbu X hanya pada plot terakhir
-    if i == 3
-        xlabel('Time (s)');
-    else
-        set(gca, 'XTickLabel', []); % Sembunyikan label X pada plot atas
-    end
+    xlabel('Time (s)');
+%     set(gca, 'XTickLabel', []); % Sembunyikan label X pada plot atas
     
     % Tambahkan legenda hanya pada plot pertama
-    if i == 3
-        legend([h_single, h_multi, h_multi3, h_ref], 'Location','best', 'NumColumns', 2);
-    end
+    legend([h_single, h_multi, h_ref], 'Location','best', 'NumColumns', 2);
+
     hold off;
 end
 
@@ -109,51 +103,39 @@ for i = 1:3
     hold on;
     
     % Plot Actual Angles
-    h_single = plot(t_single, results_single.history_x(idx,:), 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'Hybrid');
-    h_multi = plot(t_multi, results_multi.history_x(idx,:), 'Color', color2, 'LineWidth', 1.5, 'DisplayName', 'Cost-only APF');
-    h_multi3 = plot(t_multi3, results_multi3.history_x(idx,:), 'Color', color3, 'LineWidth', 1.5, 'DisplayName', 'Input-Bias APF');
+    h_single = plot(t_single, results_single.history_x(idx,:), 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'Hybrid APF–NMPC');
+    h_multi = plot(t_multi, results_multi.history_x(idx,:), 'Color', color2, 'LineWidth', 1.5, 'DisplayName', 'Cost-Augmented APF–NMPC');
     
     % Plot Reference Angle
     h_ref = plot(t_single, results_single.history_x_ref(idx,:), 'k--', 'LineWidth', 1.5, 'DisplayName', 'Reference');
-    
-    xline(1.2, '--', 'Avoidance Start', 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment','bottom');
-    xline(10.6, '--', 'Avoidance End', 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment','bottom');
     
     grid on;
     ylabel(angle_labels{i});
     title(angle_titles{i});
     
     % Sumbu X hanya pada plot terakhir
-    if i == 3
-        xlabel('Time [s]');
-    else
-        set(gca, 'XTickLabel', []); % Sembunyikan label X pada plot atas
-    end
+    xlabel('Time [s]');
+%     set(gca, 'XTickLabel', []); % Sembunyikan label X pada plot atas
     
     % Tambahkan legenda hanya pada plot pertama
-    if i == 1
-        legend([h_single, h_multi, h_multi3, h_ref], 'Location','best', 'NumColumns', 2);
-    end
+    legend([h_single, h_multi, h_ref], 'Location','best', 'NumColumns', 2);
+
     hold off;
 end
 
 %% === Compute Average Thrust ===
 T_avg_single = mean(results_single.history_u, 1);
 T_avg_multi  = mean(results_multi.history_u, 1);
-T_avg_multi3 = mean(results_multi3.history_u, 1);
 
 %% === Compute Control Effort Metrics ===
 J_u_single = sum(sum(results_single.history_u.^2, 1));
 J_u_multi  = sum(sum(results_multi.history_u.^2, 1));
-J_u_multi3 = sum(sum(results_multi3.history_u.^2, 1));
 
 mean_u_single = mean(T_avg_single);
 mean_u_multi  = mean(T_avg_multi);
-mean_u_multi3 = mean(T_avg_multi3);
 
 max_u_single = max(T_avg_single);
 max_u_multi  = max(T_avg_multi);
-max_u_multi3 = max(T_avg_multi3);
 
 %% === PLOT 1: Average Thrust Comparison ===
 figure('Name','Average Thrust Comparison','Color','w');
@@ -161,24 +143,22 @@ hold on; box on; grid on;
 
 plot(t_u_single, T_avg_single, 'Color', color1, 'LineWidth', 1.8);
 plot(t_u_multi,  T_avg_multi,  'Color', color2, 'LineWidth', 1.8);
-plot(t_u_multi3, T_avg_multi3, 'Color', color3, 'LineWidth', 1.8);
 
 xlabel('Time [s]');
 ylabel('Average Thrust [N]');
 title('Average Thrust Comparison between NMPC-APF Methods');
 
 % (Optional) Mark obstacle avoidance window
-xline(1.2, '--', 'Avoidance Start', 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment','bottom');
-xline(10.6, '--', 'Avoidance End', 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment','bottom');
+% xline(start, '--', 'Avoidance Start', 'Color', [0.5 0.5 0.5], 'LabelHorizontalAlignment', 'center','LabelVerticalAlignment','top');
+% xline(finish, '--', 'Avoidance End', 'Color', [0.5 0.5 0.5], 'LabelHorizontalAlignment', 'center','LabelVerticalAlignment','top');
 
-legend({'Hybrid NMPC (Cost + Constraint)', ...
-        'NMPC (Cost-only APF)', ...
-        'NMPC (Input-Bias APF)'}, ...
+legend({'Hybrid APF–NMPC', ...
+        'Cost-Augmented APF–NMPC'}, ...
         'Location','best');
 set(gca,'FontSize',11);
 
-ylim([min([T_avg_single,T_avg_multi,T_avg_multi3])*0.9, ...
-      max([T_avg_single,T_avg_multi,T_avg_multi3])*1.1]);
+ylim([min([T_avg_single,T_avg_multi])*0.9, ...
+      max([T_avg_single,T_avg_multi])*1.1]);
 
 %% === PLOT 2: Thrust per Motor (Optional, use one representative motor) ===
 figure('Name','Thrust Command (Motor 1)','Color','w');
@@ -186,32 +166,30 @@ hold on; box on; grid on;
 
 plot(t_u_single, results_single.history_u(1,:), 'Color', color1, 'LineWidth', 1.5);
 plot(t_u_multi,  results_multi.history_u(1,:),  'Color', color2, 'LineWidth', 1.5);
-plot(t_u_multi3, results_multi3.history_u(1,:), 'Color', color3, 'LineWidth', 1.5);
 
 xlabel('Time [s]');
 ylabel('Thrust Motor 1 [N]');
 title('Thrust Command Comparison (Representative Motor)');
-legend({'Hybrid NMPC', 'Cost-only APF', 'Input-Bias APF'}, 'Location','best');
+legend({'Hybrid APF–NMPC', 'Cost-Augmented APF–NMPC'}, 'Location','best');
 set(gca,'FontSize',11);
 
 % (Optional) Mark obstacle avoidance window
-xline(1.2, '--', 'Avoidance Start', 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment','bottom');
-xline(10.6, '--', 'Avoidance End', 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment','bottom');
+% xline(start, '--', 'Avoidance Start', 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment','bottom');
+% xline(finish, '--', 'Avoidance End', 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment','bottom');
 
 %% === TABLE: Control Effort Metrics ===
 fprintf('\n=== CONTROL EFFORT METRICS ===\n');
 fprintf('%-35s %-15s %-15s %-15s\n', 'Method', 'Σ||u||²', 'Mean Thrust [N]', 'Max Thrust [N]');
 fprintf('---------------------------------------------------------------------------------\n');
-fprintf('%-35s %-15.3f %-15.3f %-15.3f\n', 'Hybrid NMPC (Cost+Constraint)', J_u_single, mean_u_single, max_u_single);
-fprintf('%-35s %-15.3f %-15.3f %-15.3f\n', 'NMPC (Cost-only APF)',         J_u_multi,  mean_u_multi,  max_u_multi);
-fprintf('%-35s %-15.3f %-15.3f %-15.3f\n', 'NMPC (Input-Bias APF)',        J_u_multi3, mean_u_multi3, max_u_multi3);
+fprintf('%-35s %-15.3f %-15.3f %-15.3f\n', 'Hybrid APF–NMPC', J_u_single, mean_u_single, max_u_single);
+fprintf('%-35s %-15.3f %-15.3f %-15.3f\n', 'Cost-Augmented APF–NMPC',         J_u_multi,  mean_u_multi,  max_u_multi);
 
 %% === (Optional) Convert metrics to table for plotting/export ===
 ControlEffortTable = table( ...
-    {'Hybrid (Cost+Constraint)'; 'Cost-only APF'; 'Input-Bias APF'}, ...
-    [J_u_single; J_u_multi; J_u_multi3], ...
-    [mean_u_single; mean_u_multi; mean_u_multi3], ...
-    [max_u_single; max_u_multi; max_u_multi3], ...
+    {'Hybrid APF–NMPC'; 'Cost-Augmented APF–NMPC'}, ...
+    [J_u_single; J_u_multi], ...
+    [mean_u_single; mean_u_multi], ...
+    [max_u_single; max_u_multi], ...
     'VariableNames', {'Method','TotalEffort','MeanThrust','MaxThrust'});
 
 disp(ControlEffortTable);
@@ -231,10 +209,6 @@ x_actual_multi = results_multi.history_x(1, :);
 y_actual_multi = results_multi.history_x(2, :);
 z_actual_multi = results_multi.history_x(3, :);
 
-x_actual_multi3 = results_multi3.history_x(1, :);
-y_actual_multi3 = results_multi3.history_x(2, :);
-z_actual_multi3 = results_multi3.history_x(3, :);
-
 figure; hold on; grid on; box on;
 
 %% --- Plot Lintasan Reference dan Aktual ---
@@ -242,14 +216,10 @@ figure; hold on; grid on; box on;
 h_ref = plot3(x_ref_single, y_ref_single, z_ref_single, 'k--', 'LineWidth', 1.5, 'DisplayName', 'Reference Path');
 
 % Plot lintasan metode pertama (Single)
-h_actual_single = plot3(x_actual_single, y_actual_single, z_actual_single, 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'Hybrid');
+h_actual_single = plot3(x_actual_single, y_actual_single, z_actual_single, 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'Hybrid APF–NMPC');
 
 % Plot lintasan metode kedua (Multi)
-h_actual_multi = plot3(x_actual_multi, y_actual_multi, z_actual_multi, 'Color', color2, 'LineWidth', 1.5, 'DisplayName', 'Cost-only');
-
-% Plot lintasan metode kedua (Multi)
-h_actual_multi3 = plot3(x_actual_multi3, y_actual_multi3, z_actual_multi3, 'Color', color3, 'LineWidth', 1.5, 'DisplayName', 'Parameter-level APF');
-
+h_actual_multi = plot3(x_actual_multi, y_actual_multi, z_actual_multi, 'Color', color2, 'LineWidth', 1.5, 'DisplayName', 'Cost-Augmented APF–NMPC');
 
 %% --- Tandai Start & Finish ---
 % Titik awal dan akhir untuk metode pertama
@@ -288,19 +258,8 @@ for k = 1:step_arrow_multi:N_multi-1
             scale_arrow, 'Color', color2, 'LineWidth', 1.5, 'MaxHeadSize', 2, 'HandleVisibility', 'off');
 end
 
-% Panah untuk lintasan kedua
-N_multi3 = length(x_actual_multi3);
-step_arrow_multi3 = max(floor(N_multi3/20),1);
-for k = 1:step_arrow_multi3:N_multi3-1
-    quiver3(x_actual_multi3(k), y_actual_multi3(k), z_actual_multi3(k), ...
-            x_actual_multi3(k+1)-x_actual_multi3(k), ...
-            y_actual_multi3(k+1)-y_actual_multi3(k), ...
-            z_actual_multi3(k+1)-z_actual_multi3(k), ...
-            scale_arrow, 'Color', color3, 'LineWidth', 1.5, 'MaxHeadSize', 2, 'HandleVisibility', 'off');
-end
-h_arrow_single = plot3(nan, nan, nan, 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'Hybrid');
-h_arrow_multi = plot3(nan, nan, nan, 'Color', color2, 'LineWidth', 1.5, 'DisplayName', 'Cost-only');
-h_arrow_multi3 = plot3(nan, nan, nan, 'Color', color3, 'LineWidth', 1.5, 'DisplayName', 'Parameter-level APF');
+h_arrow_single = plot3(nan, nan, nan, 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'Hybrid APF–NMPC');
+h_arrow_multi = plot3(nan, nan, nan, 'Color', color2, 'LineWidth', 1.5, 'DisplayName', 'Cost-Augmented APF–NMPC');
 
 %% --- Plot Obstacles (Silinder Hijau Tua) ---
 num_obs = size(obs_center,2);
@@ -328,7 +287,7 @@ for j = 1:num_obs
     y_safe = y_safe + c(2);
     surf(x_safe, y_safe, z_safe, 'FaceAlpha', 0.1, 'FaceColor', 'r', 'EdgeColor', 'none', 'HandleVisibility', 'off');
 end
-h_obs = plot3(nan, nan, nan, 's', 'MarkerFaceColor', 'k', 'MarkerEdgeColor', 'k', 'DisplayName', 'Obstacles');
+h_obs = plot3(nan, nan, nan, 'ko', 'MarkerFaceColor', 'm', 'MarkerEdgeColor', 'k', 'DisplayName', 'Obstacles');
 
 
 %% --- Axis, Labels, View ---
@@ -337,9 +296,9 @@ title('Drone Trajectory Comparison', 'FontSize', 12);
 view(45,25);
 
 % Atur batas sumbu agar konsisten untuk kedua plot
-all_x = [x_ref_single, x_actual_single, x_actual_multi, x_actual_multi3];
-all_y = [y_ref_single, y_actual_single, y_actual_multi, y_actual_multi3];
-all_z = [z_ref_single, z_actual_single, z_actual_multi, z_actual_multi3];
+all_x = [x_ref_single, x_actual_single, x_actual_multi];
+all_y = [y_ref_single, y_actual_single, y_actual_multi];
+all_z = [z_ref_single, z_actual_single, z_actual_multi];
 
 xlim([min(all_x)-1, max(all_x)+1]);
 ylim([min(all_y)-1, max(all_y)+1]);
@@ -348,16 +307,15 @@ zlim([min(all_z)-1, max(all_z)+1]);
 axis equal; grid on;
 
 %% --- Legend (informatif) ---
-legend([h_actual_single, h_actual_multi, h_actual_multi3, h_ref, h_arrow_single, h_arrow_multi, h_arrow_multi3, h_obs, h_start_ref, h_finish_ref], 'Location','bestoutside');
+legend([h_actual_single, h_actual_multi, h_ref, h_obs, h_start_ref, h_finish_ref], 'Location','bestoutside');
 
 
 figure; hold on; grid on; box on;
 
 %% --- Plot Lintasan Referensi dan Aktual ---
 h_ref = plot(x_ref, y_ref, 'k--', 'LineWidth', 1.5, 'DisplayName', 'Reference Path'); % Jalur referensi
-h_actual_single = plot(x_actual_single, y_actual_single, 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'Hybrid'); % Jalur Single-NMPC
-h_actual_multi = plot(x_actual_multi, y_actual_multi, 'Color', color2, 'LineWidth', 1.5, 'DisplayName', 'Cost-only'); % Jalur Multi-NMPC
-h_actual_multi3 = plot(x_actual_multi3, y_actual_multi3, 'Color', color3, 'LineWidth', 1.5, 'DisplayName', 'Parameter-level APF'); % Jalur Multi-NMPC
+h_actual_single = plot(x_actual_single, y_actual_single, 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'Hybrid APF–NMPC'); % Jalur Single-NMPC
+h_actual_multi = plot(x_actual_multi, y_actual_multi, 'Color', color2, 'LineWidth', 1.5, 'DisplayName', 'Cost-Augmented APF–NMPC'); % Jalur Multi-NMPC
 
 %% --- Obstacles (lingkaran 2D) ---
 % --- Inisialisasi Parameter ---
@@ -387,8 +345,8 @@ end
 
 % --- Handle Legenda (untuk Rintangan dan Zona Aman) ---
 % Tambahkan handle placeholder untuk legenda yang akurat
-h_obs = plot(nan, nan, 's', 'MarkerFaceColor', obstacle_color, 'MarkerEdgeColor', 'k', 'DisplayName', 'Rintangan Fisik');
-h_safe = plot(nan, nan, 'k:', 'LineWidth', 1.2, 'DisplayName', ['Zona Aman (R_{safe} = ' num2str(d_safe) 'm)']);
+h_obs = plot(nan, nan, 's', 'MarkerFaceColor', obstacle_color, 'MarkerEdgeColor', 'k', 'DisplayName', 'Obstacles');
+h_safe = plot(nan, nan, 'k:', 'LineWidth', 1.2, 'DisplayName', ['Safe zone (R_{safe} = ' num2str(d_safe) 'm)']);
 
 % Hapus plot placeholder lama jika ada
 % h_obs_old = plot(nan, nan, 'o', 'MarkerFaceColor', 'k', 'MarkerEdgeColor', 'k', 'DisplayName', 'Obstacles');
@@ -426,21 +384,13 @@ for k = 1:step_arrow_multi:N_multi - 1
            scale_arrow, 'Color', color2, 'LineWidth', 1.5, 'MaxHeadSize', 3, 'HandleVisibility', 'off');
 end
 
-N_multi3 = length(x_actual_multi3);
-step_arrow_multi3 = max(floor(N_multi3 / 20), 1);
-for k = 1:step_arrow_multi3:N_multi3 - 1
-    quiver(x_actual_multi3(k), y_actual_multi3(k), ...
-           x_actual_multi3(k+1) - x_actual_multi3(k), ...
-           y_actual_multi3(k+1) - y_actual_multi3(k), ...
-           scale_arrow, 'Color', color3, 'LineWidth', 1.5, 'MaxHeadSize', 3, 'HandleVisibility', 'off');
-end
+
 % h_arrow_single = plot(nan, nan, 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'Improvement APF Heading');
 % h_arrow_multi = plot(nan, nan, 'Color', color3, 'LineWidth', 1.5, 'DisplayName', 'Clasic APF Heading');
 
 
-h_arrow_single = plot(nan, nan, 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'Hybrid');
-h_arrow_multi = plot(nan, nan, 'Color', color2, 'LineWidth', 1.5, 'DisplayName', 'Cost-only');
-h_arrow_multi3 = plot(nan, nan, 'Color', color3, 'LineWidth', 1.5, 'DisplayName', 'Parameter-level');
+h_arrow_single = plot(nan, nan, 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'Hybrid APF–NMPC');
+h_arrow_multi = plot(nan, nan, 'Color', color2, 'LineWidth', 1.5, 'DisplayName', 'Cost-Augmented APF–NMPC');
 
 %% --- Axis, Labels, Title ---
 xlabel('X [m]');
@@ -451,42 +401,66 @@ grid on;
 box on;
 
 %% --- Legend yang lebih informatif ---
-legend([h_actual_single, h_actual_multi, h_ref, h_arrow_single, h_arrow_multi, h_start_ref, h_finish_ref, h_obs], 'Location', 'bestoutside');
+legend([h_actual_single, h_actual_multi,h_ref, h_start_ref, h_finish_ref, h_obs], 'Location', 'northeast');
 
 
 % Asumsi: 'results_single', 'results_multi', 'obs_center', dan 'obs_radius' telah dimuat
 
 %% --- Hitung metrik untuk Single-NMPC ---
-N_actual_single = size(results_single.history_x, 2);
-time_single = (0:N_actual_single-1) * results_single.dt;
-d_min_log_single = zeros(1, N_actual_single);
-for i = 1:N_actual_single
-    p = results_single.history_x(1:3, i);
-    d_all = vecnorm(p - obs_center, 2, 1) - obs_radius;
-    d_min_log_single(i) = min(d_all);
+% N_actual_single = size(results_single.history_x, 2);
+% time_single = (0:N_actual_single-1) * results_single.dt;
+% d_min_log_single = zeros(1, N_actual_single);
+% for i = 1:N_actual_single
+%     p = results_single.history_x(1:3, i);
+%     d_all = vecnorm(p - obs_center, 2, 1) - obs_radius;
+%     d_min_log_single(i) = min(d_all);
+% end
+
+% Ambil hanya koordinat X dan Y dari pusat rintangan (Z diabaikan)
+obs_center_2D = obs_center(1:2, :); 
+obs_radius_2D = obs_radius; % Radius tetap sama
+
+for i = 1:N_single
+    % PENTING: Ambil hanya X dan Y dari posisi drone
+    p_2D = results_single.history_x(1:2, i); 
+    
+    % Hitung jarak horizontal (2D) dari pusat drone ke pusat rintangan
+    distance_to_center_2D = vecnorm(p_2D - obs_center_2D, 2, 1);
+    
+    % Hitung jarak minimum ke permukaan (2D)
+    d_all_2D = distance_to_center_2D - obs_radius_2D;
+    d_min_log_single(i) = min(d_all_2D);
 end
-v_act_norm_single = sqrt(sum(results_single.history_x(7:9, 1:N_actual_single).^2, 1));
+
+
+v_act_norm_single = sqrt(sum(results_single.history_x(7:9, 1:N_single).^2, 1));
 
 %% --- Hitung metrik untuk Multi-NMPC ---
-N_actual_multi = size(results_multi.history_x, 2);
-time_multi = (0:N_actual_multi-1) * results_multi.dt;
-d_min_log_multi = zeros(1, N_actual_multi);
-for i = 1:N_actual_multi
-    p = results_multi.history_x(1:3, i);
-    d_all = vecnorm(p - obs_center, 2, 1) - obs_radius;
-    d_min_log_multi(i) = min(d_all);
-end
-v_act_norm_multi = sqrt(sum(results_multi.history_x(7:9, 1:N_actual_multi).^2, 1));
+% N_actual_multi = size(results_multi.history_x, 2);
+% time_multi = (0:N_actual_multi-1) * results_multi.dt;
+% d_min_log_multi = zeros(1, N_actual_multi);
+% for i = 1:N_actual_multi
+%     p = results_multi.history_x(1:3, i);
+%     d_all = vecnorm(p - obs_center, 2, 1) - obs_radius;
+%     d_min_log_multi(i) = min(d_all);
+% end
 
-N_actual_multi3 = size(results_multi3.history_x, 2);
-time_multi3 = (0:N_actual_multi3-1) * results_multi3.dt;
-d_min_log_multi3 = zeros(1, N_actual_multi3);
-for i = 1:N_actual_multi3
-    p = results_multi3.history_x(1:3, i);
-    d_all = vecnorm(p - obs_center, 2, 1) - obs_radius;
-    d_min_log_multi3(i) = min(d_all);
+obs_center_2D = obs_center(1:2, :); 
+obs_radius_2D = obs_radius; % Radius tetap sama
+
+for i = 1:N_multi
+    % PENTING: Ambil hanya X dan Y dari posisi drone
+    p_2D = results_multi.history_x(1:2, i); 
+    
+    % Hitung jarak horizontal (2D) dari pusat drone ke pusat rintangan
+    distance_to_center_2D = vecnorm(p_2D - obs_center_2D, 2, 1);
+    
+    % Hitung jarak minimum ke permukaan (2D)
+    d_all_2D = distance_to_center_2D - obs_radius_2D;
+    d_min_log_multi(i) = min(d_all_2D);
 end
-v_act_norm_multi3 = sqrt(sum(results_multi3.history_x(7:9, 1:N_actual_multi3).^2, 1));
+
+v_act_norm_multi = sqrt(sum(results_multi.history_x(7:9, 1:N_multi).^2, 1));
 
 
 %% --- Plot 1: Minimum Distance to Obstacles Comparison ---
@@ -497,20 +471,18 @@ grid on;
 
 % --- Plot Minimum Distance ---
 % 'time_single', 'd_min_log_single' likely refer to your Hybrid NMPC approach
-h_dist_hybrid = plot(time_single, d_min_log_single, 'Color', color1, 'LineWidth', 1.5);
+h_dist_hybrid = plot(t_single, d_min_log_single, 'Color', color1, 'LineWidth', 1.5);
 
 % 'time_multi', 'd_min_log_multi' likely refer to the Cost-only APF benchmark
-h_dist_cost_only = plot(time_multi, d_min_log_multi, 'Color', color2, 'LineWidth', 1.5);
+h_dist_cost_only = plot(t_multi, d_min_log_multi, 'Color', color2, 'LineWidth', 1.5);
 
-% 'time_multi3', 'd_min_log_multi3' likely refer to the Input-Bias APF benchmark
-h_dist_input_bias = plot(time_multi3, d_min_log_multi3, 'Color', color3, 'LineWidth', 1.5);
 
 ylabel('Minimum Distance to Obstacles [m]');
 xlabel('Time [s]');
 title('Comparison of Drone Minimum Distance to Obstacles');
 
 % Combine distance data to set consistent axis limits
-all_dist = [d_min_log_single, d_min_log_multi, d_min_log_multi3];
+all_dist = [d_min_log_single, d_min_log_multi];
 ylim([0, max(all_dist) * 1.2]);
 
 % Safe Distance Threshold Line
@@ -518,14 +490,13 @@ h_safe_line = yline(0.5, 'k', 'LineWidth', 1.5, 'Label', 'safety boundary (d{saf
     'LabelVerticalAlignment', 'bottom');
 
 % Legend for Distance Plot
-legend([h_dist_hybrid, h_dist_cost_only, h_dist_input_bias], ...
-       {'Hybrid NMPC (Cost+Constraint)', ...
-        'NMPC (Cost-only APF)', ...
-        'NMPC (Input-Bias APF)'}, ...
+legend([h_dist_hybrid, h_dist_cost_only], ...
+       {'Hybrid APF–NMPC', ...
+        'Cost-Augmented APF–NMPC'}, ...
        'Location', 'northeast', 'FontSize', 10, 'Box', 'off');
    
-xline(1.2, '--', 'Start Avoidance', 'Color', [0.2 0.2 0.2]);
-xline(10.6, '--', 'End Avoidance', 'Color', [0.2 0.2 0.2]);
+% xline(start, '--', 'Start Avoidance', 'Color', [0.2 0.2 0.2]);
+% xline(finish, '--', 'End Avoidance', 'Color', [0.2 0.2 0.2]);
 
 
 set(gca, 'FontSize', 11);
@@ -538,26 +509,25 @@ box on;
 grid on;
 
 % --- Plot Total Speed ---
-h_speed_hybrid = plot(time_single, v_act_norm_single, 'Color', color1, 'LineWidth', 1.5);
-h_speed_cost_only = plot(time_multi, v_act_norm_multi, 'Color', color2, 'LineWidth', 1.5);
-h_speed_input_bias = plot(time_multi3, v_act_norm_multi3, 'Color', color3, 'LineWidth', 1.5);
+h_speed_hybrid = plot(t_single, v_act_norm_single, 'Color', color1, 'LineWidth', 1.5);
+h_speed_cost_only = plot(t_multi, v_act_norm_multi, 'Color', color2, 'LineWidth', 1.5);
 
 ylabel('Drone Total Speed [m/s]');
 xlabel('Time [s]');
 title('Comparison of Drone Total Speed during Maneuver');
 
 % Combine speed data to set consistent axis limits
-all_speed = [v_act_norm_single, v_act_norm_multi, v_act_norm_multi3];
+all_speed = [v_act_norm_single, v_act_norm_multi];
 ylim([0, max(all_speed) * 1.2]);
 
 % Legend for Speed Plot
-legend([h_speed_hybrid, h_speed_cost_only, h_speed_input_bias], ...
-       {'Speed (Hybrid NMPC)', 'Speed (Cost-only APF)', 'Speed (Input-Bias APF)'}, ...
+legend([h_speed_hybrid, h_speed_cost_only], ...
+       {'Hybrid APF–NMPC', 'Cost-Augmented APF–NMPC'}, ...
        'Location', 'best');
 
 % (Optional) Mark obstacle avoidance window
-xline(1.2, '--', 'Avoidance Start', 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment','top');
-xline(10.6, '--', 'Avoidance End', 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment','top');
+% xline(start, '--', 'Avoidance Start', 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment','top');
+% xline(finish, '--', 'Avoidance End', 'Color', [0.5 0.5 0.5], 'LabelVerticalAlignment','top');
 
 set(gca, 'FontSize', 11);
 
@@ -569,17 +539,15 @@ set(gca, 'FontSize', 11);
 % Dapatkan data dan waktu untuk kedua metode
 t_single = (0:size(results_single.history_x, 2)-1) * results_single.dt;
 t_multi = (0:size(results_multi.history_x, 2)-1) * results_multi.dt;
-t_multi3 = (0:size(results_multi3.history_x, 2)-1) * results_multi3.dt;
 
 % Buat figure dengan ukuran yang disesuaikan
 figure('Name','Drone Linear Velocity and Speed Comparison','Color','w', 'Position', [100 100 800 900]);
 
 % Warna dan style
-colors = {color1, color2, color3};
+colors = {color1, color2};
 style_ref = '--'; % Garis putus-putus untuk referensi
 style_single = '-'; % Garis solid untuk Single-NMPC
 style_multi = '-'; % Garis titik-titik untuk Multi-NMPC
-style_multi3 = '-'; % Garis titik-titik untuk Multi-NMPC
 
 %% --- VX, VY, VZ Subplots ---
 components = {'v_x','v_y','v_z'};
@@ -595,15 +563,12 @@ for i = 1:3
     
     % --- Plot Actual Multi-NMPC (Metode 2) ---
     h_multi = plot(t_multi, results_multi.history_x(6+i,:), 'Color', colors{2}, 'LineStyle', style_multi, 'LineWidth', 1.5);
-    
-    % --- Plot Actual Metode Ketiga (Metode 3) ---
-    h_multi3 = plot(t_multi3, results_multi3.history_x(6+i,:), 'Color', colors{3}, 'LineStyle', style_multi3, 'LineWidth', 1.5);
-    
+        
     grid on; box on;
     xlabel('Time [s]');
     ylabel([components{i} ' [m/s]']);
     
-    legend([h_ref, h_single, h_multi], 'NMPC reference', 'Actual (Hybrid)', 'Actual (Cost-only)', 'Actual (Parameter-level APF)', 'Location', 'best');
+    legend([h_ref, h_single, h_multi], 'NMPC reference', 'Hybrid APF–NMPC', 'Cost-Augmented APF–NMPC', 'Location', 'northeast');
     title(['Quadrotor Linear Velocity in ', strrep(components{i},'_','-')]);
     hold off;
 end
@@ -612,20 +577,19 @@ end
 v_ref_norm = sqrt(sum(results_single.history_x_ref(7:9,:).^2,1));
 v_single_norm = sqrt(sum(results_single.history_x(7:9,:).^2,1));
 v_multi_norm = sqrt(sum(results_multi.history_x(7:9,:).^2,1));
-v_multi_norm3 = sqrt(sum(results_multi3.history_x(7:9,:).^2,1));
  
 subplot(4,1,4);
 hold on;
 plot(t_single, v_ref_norm, 'k--', 'LineWidth', 1.5);
 plot(t_single, v_single_norm, 'Color', color1, 'LineWidth', 1.5);
 plot(t_multi, v_multi_norm, 'Color', color2, 'LineWidth', 1.5);
-plot(t_multi3, v_multi_norm3, 'Color', color3, 'LineWidth', 1.5);
 
 grid on; box on;
 xlabel('Time [s]');
 ylabel('Speed [m/s]');
-legend('NMPC reference speed', 'Actual speed (Hybrid)', 'Actual speed (Cost-only)', 'Actual speed (Parameter-level APF)', 'Location', 'best');
+legend('NMPC reference speed', 'Hybrid APF–NMPC', 'Cost-Augmented APF–NMPC', 'Location', 'best');
 title('Comparison of Drone Total Linear Speed');
+
 hold off;
 
 
@@ -634,24 +598,21 @@ hold off;
 ref_traj = [x_ref; y_ref; z_ref];
 act_single = results_single.history_x(1:3,:);
 act_multi  = results_multi.history_x(1:3,:);
-act_multi3 = results_multi3.history_x(1:3,:);
 
 [RMSE_single, MAE_single, MAX_single] = computeTrackingError(ref_traj, act_single);
 [RMSE_multi,  MAE_multi,  MAX_multi]  = computeTrackingError(ref_traj, act_multi);
-[RMSE_multi3, MAE_multi3, MAX_multi3] = computeTrackingError(ref_traj, act_multi3);
 
 %% === Hitung Violation untuk setiap metode ===
 V_single = computeViolation(results_single, obs_center, obs_radius);
 V_multi  = computeViolation(results_multi,  obs_center, obs_radius);
-V_multi3 = computeViolation(results_multi3, obs_center, obs_radius);
 
 
 %% === Buat Tabel Evaluasi ===
-Method = {'APF-Cost-only'; 'APF-Hybrid (Cost+Constraint)'; 'APF-Parameter-level'};
-RMSE = [RMSE_single; RMSE_multi; RMSE_multi3];
-MAE  = [MAE_single; MAE_multi; MAE_multi3];
-MAXE = [MAX_single; MAX_multi; MAX_multi3];
-Violation = [V_single; V_multi; V_multi3];
+Method = {'Hybrid APF–NMPC'; 'Cost-Augmented APF–NMPC'};
+RMSE = [RMSE_single; RMSE_multi];
+MAE  = [MAE_single; MAE_multi];
+MAXE = [MAX_single; MAX_multi];
+Violation = [V_single; V_multi];
 
 T = table(Method, RMSE, MAE, MAXE, Violation);
 disp('=== Performance Comparison ===');
@@ -667,6 +628,154 @@ plot(categorical(Method), Violation, 'ro-','LineWidth',2,'MarkerSize',8);
 ylabel('Constraint Violation [m]');
 title('Tracking Error and Safety Violation Comparison');
 grid on;
+
+
+%%%%%%%%%%%
+% --- Data Input Awal ---
+N_actual_single = size(results_single.history_x, 2);
+F_total_norm_log_single = zeros(1, N_actual_single); 
+v_act_norm_single = zeros(1, N_actual_single); 
+
+N_actual_multi = size(results_multi.history_x, 2);
+F_total_norm_log_multi = zeros(1, N_actual_multi); 
+v_act_norm_multi = zeros(1, N_actual_multi);
+
+% --- KONSTANTA (Pastikan nilai ini identik dengan NMPC Anda) ---
+k_att = 0.01;       % attractive gain
+k_rep = 4.0;       % repulsive gain (tune)
+d0    = 4.0;       % influence distance of obstacles [m]
+p_start = [0; 5]; %%% local minima2
+p_goal = [33; 5];
+% num_obs = size(obs_center, 2);
+
+% LOOP POST-PROCESSING
+for i = 1:N_actual_single
+    % 1. Ambil Data Posisi & Hitung Kecepatan (NUMERIK)
+    p_2D = results_single.history_x(1:2, i); 
+    v_inertial = results_single.history_x(7:9, i);
+    v_act_norm_single(i) = norm(v_inertial); 
+    
+    % 2. Hitung F_rep (NUMERIK)
+    F_rep_total_2D = [0; 0];
+    for j = 1:num_obs
+        c = obs_center(1:2, j);
+        r_obs = obs_radius(j);
+        
+        vec = p_2D - c;
+        dist = norm(vec);      
+        dist_surf = dist - r_obs; 
+        
+        % Kondisi pengaruh APF
+        if dist_surf <= d0 && dist_surf > 1e-6 
+            dir_ = vec / dist; 
+            
+            % Formula Gaya Repulsive Numerik (sesuai logika kode CasADi Anda)
+            mag = k_rep * (1/dist_surf - 1/d0) * (1/dist_surf^2); 
+            F_rep_total_2D = F_rep_total_2D + mag * dir_;
+        end
+    end
+    
+    % 3. Hitung F_att dan F_total (NUMERIK)
+    % Formula Gaya Attractive Numerik
+    F_att_2D = - k_att * (p_2D - p_goal);
+    F_total_2D = F_att_2D + F_rep_total_2D;
+    
+    % 4. Log Besaran Gaya Total (NUMERIK)
+    F_total_norm_log_single(i) = norm(F_total_2D);
+end
+
+% LOOP POST-PROCESSING
+for i = 1:N_actual_multi
+    % 1. Ambil Data Posisi & Hitung Kecepatan (NUMERIK)
+    p_2D = results_multi.history_x(1:2, i); 
+    v_inertial_multi = results_multi.history_x(7:9, i);
+    v_act_norm_multi(i) = norm(v_inertial_multi); 
+    
+    % 2. Hitung F_rep (NUMERIK)
+    F_rep_total_2D = [0; 0];
+    for j = 1:num_obs
+        c = obs_center(1:2, j);
+        r_obs = obs_radius(j);
+        
+        vec = p_2D - c;
+        dist = norm(vec);      
+        dist_surf = dist - r_obs; 
+        
+        % Kondisi pengaruh APF
+        if dist_surf <= d0 && dist_surf > 1e-6 
+            dir_ = vec / dist; 
+            
+            % Formula Gaya Repulsive Numerik (sesuai logika kode CasADi Anda)
+            mag = k_rep * (1/dist_surf - 1/d0) * (1/dist_surf^2); 
+            F_rep_total_2D = F_rep_total_2D + mag * dir_;
+        end
+    end
+    
+    % 3. Hitung F_att dan F_total (NUMERIK)
+    % Formula Gaya Attractive Numerik
+    F_att_2D = - k_att * (p_2D - p_goal);
+    F_total_2D = F_att_2D + F_rep_total_2D;
+    
+    % 4. Log Besaran Gaya Total (NUMERIK)
+    F_total_norm_log_multi(i) = norm(F_total_2D);
+end
+
+% --- Ambang Batas Deteksi Local Minima ---
+E_F = 0.05;  % Ambang batas Gaya (misal, 0.05 Newton)
+E_V = 0.1;   % Ambang batas Kecepatan (misal, 0.1 m/s)
+
+% --- Deteksi Waktu Local Minima ---
+% Logika: Kapan F_norm DAN v_norm di bawah ambang batas
+is_trapped = (F_total_norm_log_single < E_F) & (v_act_norm_single < E_V);
+
+% --- Plotting ---
+figure(101); % Gunakan figure yang sama untuk perbandingan
+
+% Subplot 1: Gaya APF Total
+subplot(2,1,1);
+hold on; grid on; box on;
+plot(t_single, F_total_norm_log_single, 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'F');
+plot(t_single, F_total_norm_log_multi, 'Color', color2, 'LineWidth', 1.5, 'DisplayName', 'F');
+yline(E_F, 'r--', 'LineWidth', 0.8, 'HandleVisibility', 'off'); 
+ylabel('|F_{APF Total}| [N]');
+title('Gaya APF Total dan Deteksi Local Minima');
+legend('Location', 'northeast');
+
+% Subplot 2: Kecepatan Drone
+subplot(2,1,2);
+hold on; grid on; box on;
+plot(t_single, v_act_norm_single, 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'V');
+plot(t_single, v_act_norm_single, 'Color', color1, 'LineWidth', 1.5, 'DisplayName', 'V');
+yline(E_V, 'r--', 'LineWidth', 0.8, 'HandleVisibility', 'off'); 
+ylabel('Speed [m/s]');
+xlabel('Time [s]');
+legend('Location', 'northeast');
+
+% --- Penandaan (Highlight) Area Local Minima di Kedua Subplot ---
+
+% Cek apakah ada kejadian local minima untuk di-highlight
+if any(is_trapped)
+    % Temukan awal dan akhir setiap kejadian
+    start_indices = find(diff([0 is_trapped]) == 1);
+    end_indices = find(diff([is_trapped 0]) == -1);
+
+    % Highlight di kedua subplot
+    for k = 1:length(start_indices)
+        t_start = time(start_indices(k));
+        t_end = time(end_indices(k));
+
+        % Highlight area (Gaya)
+        subplot(2,1,1);
+        area(time, F_total_norm_log_single, 'LineStyle', 'none', 'FaceColor', [1 0.7 0.7], 'FaceAlpha', 0.3, 'XLim', [t_start, t_end]);
+
+        % Highlight area (Kecepatan)
+        subplot(2,1,2);
+        area(time, v_act_norm_single, 'LineStyle', 'none', 'FaceColor', [1 0.7 0.7], 'FaceAlpha', 0.3, 'XLim', [t_start, t_end]);
+
+        % Tampilkan pesan deteksi di command window
+        disp(['[', label, '] Terjebak Local Minima: ', num2str(t_start, '%.2f'), 's - ', num2str(t_end, '%.2f'), 's']);
+    end
+end
 
 %% === Fungsi perhitungan error tracking ===
 function [RMSE, MAE, MAXE] = computeTrackingError(ref, actual)

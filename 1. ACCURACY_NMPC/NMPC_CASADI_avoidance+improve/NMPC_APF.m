@@ -19,8 +19,8 @@ Izz = 8.81e-3;
 save_data = false;
 improvement = true;
 improvement_hybrid = true;
-improvement_tc = false;
-trajectory = 3;
+improvement_tc = true;
+trajectory = 1;
 
 %% ---------- APF parameters (set di awal, sebelum loop) ----------
 k_att = 0.01;       % attractive gain
@@ -30,9 +30,9 @@ v_scale = 0.1;     % scale factor to convert F_total -> v_ref (m/s per N-equival
 max_v_ref = 3.0;   % maximum lin velocity commanded by APF [m/s]
 num_obs = 17;          % jumlah obstacle
 z_pos = 1.0;          % tinggi referensi (anggap obstacle menempel ground, drone terbang di atas)
-base_wx = 35;
-base_wy = 35;
-base_wz = 35;
+base_wx = 30;
+base_wy = 30;
+base_wz = 30;
 
 % posisi obstacle (manual supaya jaraknya tidak terlalu dekat)
 if trajectory == 1
@@ -40,7 +40,13 @@ if trajectory == 1
     obs_radius_val = 0.5;
     obs_center = [ 6  6  6  8   12   12   15   15   16   18   18   22  23   24  26  29   30 ;   % x
                    9  6  3  1.8  4   6.8   6   1.5  8.2  6.2  2.8  2   4.8  8   4   2.2  7.0 ;   % y
-                   z_pos*ones(1,num_obs) ];       % z
+                   z_pos*ones(1,num_obs) ];       % z done
+%     obs_center = [ 6  6  6  8   12   12   15   15   16   18   18   22  23   24  26  29   30 ;   % x
+%                    9  5.5  3  1.8  4.5   5.5   5   1.5  8.2  6.2  2.8  2   4.8  8   4   2.2  7.0 ;   % y
+%                    z_pos*ones(1,num_obs) ];       % z
+%     obs_center = [ 6  9  6  8   12   12   15   15   16   18   18   22  23.5   24  26  29   30 ;   % x
+%                        9  5.5  3  1.8  4   6   5   1.5  8.2  6.2  2.8  2   5  8   5   2.2  7.0 ;   % y
+%                        z_pos*ones(1,num_obs) ];       % z done
 
     obs_radius = obs_radius_val * ones(1,num_obs);
 elseif trajectory == 2
@@ -178,7 +184,7 @@ ubg = [ubg; zeros(nx,1)];
 % --- Generate warm start untuk propagasi awal ---
 arg_w0 = [];
 % x_guess = zeros(nx,1); 
-x_guess = QuadrotorReferenceTrajectory4(0, trajectory);
+x_guess = QuadrotorReferenceTrajectory6(0, trajectory);
 
 % 1. Initial state
 arg_w0 = [arg_w0; x_guess];
@@ -197,7 +203,7 @@ for k = 1:N
     arg_w0 = [arg_w0; x_guess];
 end
 
-
+F_total_norm_log = zeros(1, N); % Inisialisasi log
 % Main horizon loop
 for k = 0:N-1
     % Control variables
@@ -284,6 +290,7 @@ for k = 0:N-1
         p = X_vars{k+1}(1:2);        % posisi drone saat ini
         p_goal = X_ref_params{k+1}(1:2);  % posisi goal
         F_att = - k_att * (p - p_goal);  % 2x1 vector MX
+ 
         %%
         J = J + (X_vars{k+1} - X_ref_params{k+1})' * Q * (X_vars{k+1} - X_ref_params{k+1}) + ...
                 U_vars{k+1}' * R * U_vars{k+1} + ...
@@ -302,13 +309,14 @@ for k = 0:N-1
     
     % Input rate penalty
     if k > 0
-        R_rate = 0.1 * eye(nu);
-%         else
-%             tracking_error = norm(X_vars{k+1}(1:3) - X_ref_params{k+1}(1:3)); % error posisi (x,y,z)
-%             adapt_factor = 1 + tracking_error;  % semakin besar error, semakin longgar
-%             R_rate = (0.1 / adapt_factor) * eye(nu);
+        if improvement_tc == false
+            R_rate = 0.1 * eye(nu);
+        else
+            tracking_error = norm(X_vars{k+1}(1:3) - X_ref_params{k+1}(1:3)); % error posisi (x,y,z)
+            adapt_factor = 1 + tracking_error;  % semakin besar error, semakin longgar
+            R_rate = (1 / adapt_factor) * eye(nu);
 %         R_rate = rate_penalty_param * eye(nu);
-%         end
+        end
 
         J = J + (U_vars{k+1} - U_vars{k})' * R_rate * (U_vars{k+1} - U_vars{k});
     end
@@ -356,7 +364,7 @@ history_x_ref = zeros(nx, N_sim + 1);
 v_ref_history = zeros(2,N_sim);
 
 % Initial state: start closer to first reference point
-x_ref_initial = QuadrotorReferenceTrajectory4(0, trajectory);
+x_ref_initial = QuadrotorReferenceTrajectory6(0, trajectory);
 current_state = zeros(nx, 1);
 current_state(1:3) = x_ref_initial(1:3); % Start at reference position
 current_state(3) = max(current_state(3), 0.0); % Ensure minimum altitude
@@ -371,7 +379,7 @@ for i = 1:N_sim
     
     current_time = (i-1) * dt;
     % Get reference trajectory
-    x_ref_at_current_time = QuadrotorReferenceTrajectory4(current_time, trajectory);
+    x_ref_at_current_time = QuadrotorReferenceTrajectory6(current_time, trajectory);
     history_x_ref(:, i) = x_ref_at_current_time;
     
     %%APF
@@ -422,7 +430,7 @@ for i = 1:N_sim
         else
             v_ref = v_ref_local;
         end
-        X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory4, trajectory);
+        X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory6, trajectory);
         for kk = 1:(N+1)
             % shift only the position rows (1:3)
             % optionally reduce shift weighting for farther horizon steps (fade-out)
@@ -434,7 +442,20 @@ for i = 1:N_sim
     %%
     % Build parameter vector
     else
-        X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory4, trajectory);
+        X_ref_horizon = generate_reference_horizon(current_time, N, dt, @QuadrotorReferenceTrajectory6, trajectory);
+%         T_safety_start = 0.0;
+%         P_goal = [33; 7; 5]; % Tujuan Akhir
+%         V_MAX = 10.0; 
+%         V_MIN_RECOVERY = 1.0; 
+%         T_STABLE_MIN = 2.0; 
+%         state_machine = 1;      % 1 = STATE_MISSION (Initial state)
+% 
+%         % --- Di Dalam Main Loop Simulasi (setiap langkah waktu) ---
+% 
+%         % 1. Dapatkan Reference Horizon Adaptif
+%         [X_ref_horizon, state_machine] = get_adaptive_reference( ...
+%             current_time, current_state, state_machine, N, dt, P_goal, ...
+%         V_MAX, V_MIN_RECOVERY, T_STABLE_MIN, T_safety_start, @QuadrotorReferenceTrajectory6, trajectory);
     end
         actual_params = [current_state; reshape(X_ref_horizon, [], 1)];
     % Solve NMPC
@@ -487,29 +508,22 @@ for i = 1:N_sim
 
     fprintf('Waktu %.2f s | Kecepatan aktual (NMPC): %.2f\n\n',...
         i*dt, vn_nmpc_actual);
-    
-    % Progress display with error analysis
-%     if mod(i, 20) == 0
-%         pos_error = norm(current_state(1:3) - x_ref_at_current_time(1:3));
-%         fprintf('Step %d/%d, Pos: [%.2f, %.2f, %.2f], Ref: [%.2f, %.2f, %.2f], Error: %.2f\n', ...
-%                 i, N_sim, current_state(1), current_state(2), current_state(3), ...
-%                 x_ref_at_current_time(1), x_ref_at_current_time(2), x_ref_at_current_time(3), pos_error);
-%         fprintf('           Thrust: [%.2f, %.2f, %.2f, %.2f] N\n', u_optimal');
-%     end
 end
 
 % Final reference point
-history_x_ref(:, N_sim + 1) = QuadrotorReferenceTrajectory4(T_sim, trajectory);
+history_x_ref(:, N_sim + 1) = QuadrotorReferenceTrajectory6(T_sim, trajectory);
 
 if save_data == true
-    if improvement == true && improvement_hybrid == true
+%     if improvement == true && improvement_hybrid == true
+    if improvement == true && improvement_hybrid == true && improvement_tc == true
         results.history_x = history_x;
         results.history_u = history_u;
         results.history_x_ref = history_x_ref;
         results.dt = dt;
         results.method = 'SingleShooting';
         save('sim_single.mat','results');
-    elseif improvement == true && improvement_hybrid == false
+%     elseif improvement == true && improvement_hybrid == false
+    elseif improvement == true && improvement_hybrid == true && improvement_tc == false
         results.history_x = history_x;
         results.history_u = history_u;
         results.history_x_ref = history_x_ref;
@@ -625,4 +639,154 @@ end
 
 function R_z = rotz(t)
     R_z = [cos(t), -sin(t), 0; sin(t), cos(t), 0; 0, 0, 1];
+end
+
+function [X_ref_horizon, state_machine] = get_adaptive_reference(current_time, current_state, state_machine_in, N, dt_NMPC, P_goal, V_MAX, V_MIN_RECOVERY, T_STABLE_MIN, T_safety_start_in, generate_ref_fcn, trajectory)
+% [INPUTS]:
+%   current_time: Waktu simulasi saat ini.
+%   current_state: Vektor status drone saat ini (X).
+%   state_machine_in: Status mode dari langkah waktu sebelumnya.
+%   N, dt_NMPC: Horizon dan langkah waktu NMPC.
+%   P_goal: Posisi tujuan akhir.
+%   V_MAX, V_MIN_RECOVERY, T_STABLE_MIN: Konstanta trigger.
+%   T_safety_start_in: Waktu saat Safety Mode dimulai (dari langkah sebelumnya).
+%   generate_ref_fcn: Handle fungsi referensi awal (misal, @QuadrotorReferenceTrajectory6).
+%   trajectory: Data trajectory awal (jika ada).
+
+% [OUTPUTS]:
+%   X_ref_horizon: Horizon referensi [12 x N].
+%   state_machine: Status mode yang diperbarui.
+
+    % --- Definisikan Konstanta Mode ---
+    STATE_MISSION = 1;
+    STATE_PLANNING_NEW_PATH =2;
+    STATE_SAFETY_BRAKE = 3;
+    V_WARNING = 6.0; 
+%     STATE_RECOVERY_CALC = 3;
+    
+    % Inisialisasi/Ambil Status
+    state_machine = state_machine_in;
+    T_safety_start = T_safety_start_in;
+    
+    % Dapatkan Kecepatan dan Posisi Aktual
+    v_actual = norm(current_state(7:9)); % Asumsi status 7,8,9 adalah vx, vy, vz
+    P_actual = current_state(1:3);      % Posisi saat ini [x; y; z]
+    
+    % --- LOGIKA TRANSISI MODE ---
+    
+    if state_machine == STATE_MISSION
+        if v_actual > V_WARNING
+        state_machine = STATE_PLANNING_NEW_PATH;
+        disp(['[WARNING] V_actual (', num2str(v_actual, '%.2f'), ' m/s) > V_WARNING. Merencanakan jalur baru.']);
+        
+    % --- TRANSISI DARURAT (Jika Peringatan Terlambat) ---
+        elseif v_actual > V_MAX % V_MAX > V_WARNING
+            state_machine = STATE_SAFETY_BRAKE;
+            T_safety_start = current_time;
+            disp(['[EMERGENCY] V_actual (', num2str(v_actual, '%.2f'), ' m/s) > V_MAX. SAFETY BRAKE.']);
+        end
+        
+    elseif state_machine == STATE_SAFETY_BRAKE
+        if v_actual < V_MIN_RECOVERY && (current_time - T_safety_start) >= T_STABLE_MIN
+            state_machine = STATE_RECOVERY_CALC;
+            disp('[RECOVERY] Drone stabil. Menghitung jalur baru.');
+        end
+    end
+    
+    % --- GENERASI REFERENCE BERDASARKAN MODE ---
+    
+    if state_machine == STATE_MISSION
+        % Mode 1: Jalur Lurus Normal / Tracking Jalur Baru
+        X_ref_horizon = generate_reference_horizon(current_time, N, dt_NMPC, generate_ref_fcn, trajectory);
+        
+    elseif state_machine == STATE_SAFETY_BRAKE
+        % Mode 2: Safety/Brake Mode (Hover di tempat)
+        X_ref_horizon = zeros(12, N+1); 
+        for k = 1:N
+            X_ref_horizon(1:3, k) = P_actual; % Posisi target = P_actual
+        end
+        
+    elseif state_machine == STATE_PLANNING_NEW_PATH
+        % Mode 3: Hitung Jalur Baru (Re-Targeted)
+        T_path_duration = 15; % Durasi jalur pemulihan (misal, 15 detik)
+        X_ref_new_full = generate_spline_trajectory(P_actual, P_goal, T_path_duration); % <-- Panggil fungsi spline
+        
+        % Atur kembali ke Mode Misi setelah jalur dihitung
+        state_machine = STATE_MISSION; 
+        
+        % Inisialisasi Goal State Penuh (12x1)
+        X_goal_state = zeros(12, 1);
+        X_goal_state(1:3) = P_goal; % Posisi X, Y, Z disetel ke P_goal
+
+        % Ambil horizon yang dibutuhkan dari jalur baru
+        N_ref_full = size(X_ref_new_full, 2);
+        
+        if N_ref_full >= N
+             % Jika jalur baru cukup panjang, ambil N kolom pertama
+             X_ref_horizon = X_ref_new_full(:, 1:N);
+        else
+             % JIKA JALUR TERLALU PENDEK (Solusi Perbaikan Kesalahan Repmat)
+             
+             % 1. Hitung jumlah kolom sisa yang harus diisi
+             num_cols_to_fill = N - N_ref_full; 
+             
+             % 2. Buat matriks penambal (Padding Matrix) dari Goal State
+             % Replikasi X_goal_state (12x1) sebanyak num_cols_to_fill (misal 1 kolom)
+             X_padding = repmat(X_goal_state, 1, num_cols_to_fill); 
+             
+             % 3. Gabungkan jalur spline dengan penambal
+             X_ref_horizon = [X_ref_new_full, X_padding];
+        end
+    end
+end
+
+function X_ref_full = generate_spline_trajectory(P_start, P_end, T_duration)
+    % P_start, P_end: [x; y; z] (Posisi Mulai dan Akhir)
+    % T_duration: Total waktu yang dialokasikan untuk jalur baru (misal, 10-20 detik)
+    
+    dt_ref = 0.1; % Resolusi waktu referensi
+    time_vec = 0:dt_ref:T_duration;
+    N_full = length(time_vec);
+    
+    % Asumsikan 12 Status (X)
+    X_ref_full = zeros(12, N_full); 
+
+    % Definisikan Kondisi Batas (Boundary Conditions)
+    % Drone Start di P_start dengan Kecepatan Nol (V_start = 0, A_start = 0)
+    % Drone End di P_end dengan Kecepatan Nol (V_end = 0, A_end = 0)
+    
+    t_f = T_duration;
+    
+    % Loop untuk setiap dimensi (X, Y, Z)
+    for dim = 1:3 
+        p_start = P_start(dim);
+        p_end = P_end(dim);
+        
+        % Koefisien Polinomial Kuintik (ax^5 + bx^4 + cx^3 + dx^2 + ex + f)
+        % Di sini, kita menggunakan V_start=0, A_start=0, V_end=0, A_end=0
+        
+        % Rumus Sederhana untuk Polinomial Kuintik (jika V=A=0 di awal dan akhir)
+        a = 6 * (p_start - p_end) / (t_f^5);
+        b = -15 * (p_start - p_end) / (t_f^4);
+        c = 10 * (p_start - p_end) / (t_f^3);
+        d = 0; % Awal Kecepatan Nol
+        e = 0; % Awal Akselerasi Nol
+        f = p_start;
+        
+        for k = 1:N_full
+            t = time_vec(k);
+            
+            % Posisi
+            p_t = a*t^5 + b*t^4 + c*t^3 + d*t^2 + e*t + f;
+            % Kecepatan
+            v_t = 5*a*t^4 + 4*b*t^3 + 3*c*t^2 + 2*d*t + e;
+            % Akselerasi
+            a_t = 20*a*t^3 + 12*b*t^2 + 6*c*t + 2*d;
+            
+            % Simpan ke Referensi
+            X_ref_full(dim, k) = p_t;
+            X_ref_full(dim + 6, k) = v_t; % Vektor status 7, 8, 9 adalah kecepatan
+        end
+    end
+    % Asumsi status lain (sudut, kecepatan sudut) adalah 0 atau default
 end
