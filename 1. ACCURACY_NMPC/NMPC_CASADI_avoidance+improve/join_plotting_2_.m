@@ -26,8 +26,8 @@ else
 end
 
 % Load hasil simulasi
-load('sim_single.mat','results'); results_single = results;
-load('sim_multi.mat','results');  results_multi  = results;
+load('4sim_single.mat','results'); results_single = results;
+load('4sim_multi.mat','results');  results_multi  = results;
 
 % --- Time vector untuk state (N_sim+1) ---
 t_single = (0:size(results_single.history_x,2)-1)*results_single.dt;
@@ -94,8 +94,9 @@ clf(fig2);
 
 % Define plot indices for Angles (4, 5, 6)
 angle_indices = [4, 5, 6];
-angle_labels = {'Phi (Roll) [rad]', 'Theta (Pitch) [rad]', 'Psi (Yaw) [rad]'};
-angle_titles = {'Quadrotor Roll (Phi)', 'Quadrotor Pitch (Theta)', 'Quadrotor Yaw (Psi)'};
+angle_labels = {'\phi (Roll) [deg]', '\theta (Pitch) [deg]', '\psi (Yaw) [deg]'};
+angle_titles = {'Quadrotor Roll (\phi)', 'Quadrotor Pitch (\theta)', 'Quadrotor Yaw (\psi)'};
+
 
 for i = 1:3
     idx = angle_indices(i); % 4, 5, or 6

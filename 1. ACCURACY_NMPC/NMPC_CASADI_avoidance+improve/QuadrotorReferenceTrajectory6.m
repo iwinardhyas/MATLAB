@@ -129,10 +129,12 @@ function [ xdesired ] = QuadrotorReferenceTrajectory6(t, trajectory)
 %         p_goal = [33; 7; 5];
 %         p_start = [0; 5; 5]; %%% local minima2
 %         p_goal = [33; 5; 5];
-        p_start = [0; 5; 5]; %%% local minima3 done
-        p_goal = [25; 5; 5];
+%         p_start = [0; 5; 5]; %%% local minima3 done
+%         p_goal = [25; 5; 5];
 %         p_start = [4; 10.0; 5]; %%% jalur dekat
 %         p_goal = [33; 2.0; 5];
+        p_start = [25; 7; 5]; %%%test
+        p_goal = [33; 7; 5];
         T_total = 10; % Waktu total untuk mencapai tujuan (dalam detik)
 
         % === POSISI ===

@@ -1,3 +1,4 @@
+close all;
 trajectory = 1;
 
 obs_radius_val = 0.5; % semua radius sama
@@ -21,9 +22,9 @@ else
 end
 
 % Load hasil simulasi
-load('sim_single.mat','results'); results_single = results;
-load('sim_multi.mat','results');  results_multi  = results;
-load('sim_multi3.mat','results');  results_multi3  = results;
+load('2sim_single.mat','results'); results_single = results;
+load('2sim_multi.mat','results');  results_multi  = results;
+load('2sim_multi3.mat','results');  results_multi3  = results;
 
 % --- Time vector untuk state (N_sim+1) ---
 t_single = (0:size(results_single.history_x,2)-1)*results_single.dt;
@@ -97,8 +98,8 @@ clf(fig2);
 
 % Define plot indices for Angles (4, 5, 6)
 angle_indices = [4, 5, 6];
-angle_labels = {'Phi (Roll) [rad]', 'Theta (Pitch) [rad]', 'Psi (Yaw) [rad]'};
-angle_titles = {'Quadrotor Roll (Phi)', 'Quadrotor Pitch (Theta)', 'Quadrotor Yaw (Psi)'};
+angle_labels = {'\phi (Roll) [deg]', '\theta (Pitch) [deg]', '\psi (Yaw) [deg]'};
+angle_titles = {'Quadrotor Roll (\phi)', 'Quadrotor Pitch (\theta)', 'Quadrotor Yaw (\psi)'};
 
 for i = 1:3
     idx = angle_indices(i); % 4, 5, or 6
@@ -449,10 +450,10 @@ legend([h_actual_single, h_actual_multi, h_actual_multi3,h_ref, h_start_ref, h_f
 % Asumsi: 'results_single', 'results_multi', 'obs_center', dan 'obs_radius' telah dimuat
 
 %% --- Hitung metrik untuk Single-NMPC ---
-% N_actual_single = size(results_single.history_x, 2);
-% time_single = (0:N_actual_single-1) * results_single.dt;
-% d_min_log_single = zeros(1, N_actual_single);
-% for i = 1:N_actual_single
+% N_single = size(results_single.history_x, 2);
+% t_single = (0:N_single-1) * results_single.dt;
+% d_min_log_single = zeros(1, N_single);
+% for i = 1:N_single
 %     p = results_single.history_x(1:3, i);
 %     d_all = vecnorm(p - obs_center, 2, 1) - obs_radius;
 %     d_min_log_single(i) = min(d_all);
@@ -462,7 +463,7 @@ legend([h_actual_single, h_actual_multi, h_actual_multi3,h_ref, h_start_ref, h_f
 obs_center_2D = obs_center(1:2, :); 
 obs_radius_2D = obs_radius; % Radius tetap sama
 
-for i = 1:N_actual_single
+for i = 1:N_single
     % PENTING: Ambil hanya X dan Y dari posisi drone
     p_2D = results_single.history_x(1:2, i); 
     
@@ -475,13 +476,13 @@ for i = 1:N_actual_single
 end
 
 
-v_act_norm_single = sqrt(sum(results_single.history_x(7:9, 1:N_actual_single).^2, 1));
+v_act_norm_single = sqrt(sum(results_single.history_x(7:9, 1:N_single).^2, 1));
 
 %% --- Hitung metrik untuk Multi-NMPC ---
-% N_actual_multi = size(results_multi.history_x, 2);
-% time_multi = (0:N_actual_multi-1) * results_multi.dt;
-% d_min_log_multi = zeros(1, N_actual_multi);
-% for i = 1:N_actual_multi
+% N_multi = size(results_multi.history_x, 2);
+% t_multi = (0:N_multi-1) * results_multi.dt;
+% d_min_log_multi = zeros(1, N_multi);
+% for i = 1:N_multi
 %     p = results_multi.history_x(1:3, i);
 %     d_all = vecnorm(p - obs_center, 2, 1) - obs_radius;
 %     d_min_log_multi(i) = min(d_all);
@@ -490,7 +491,7 @@ v_act_norm_single = sqrt(sum(results_single.history_x(7:9, 1:N_actual_single).^2
 obs_center_2D = obs_center(1:2, :); 
 obs_radius_2D = obs_radius; % Radius tetap sama
 
-for i = 1:N_actual_multi
+for i = 1:N_multi
     % PENTING: Ambil hanya X dan Y dari posisi drone
     p_2D = results_multi.history_x(1:2, i); 
     
@@ -502,12 +503,12 @@ for i = 1:N_actual_multi
     d_min_log_multi(i) = min(d_all_2D);
 end
 
-v_act_norm_multi = sqrt(sum(results_multi.history_x(7:9, 1:N_actual_multi).^2, 1));
+v_act_norm_multi = sqrt(sum(results_multi.history_x(7:9, 1:N_multi).^2, 1));
 
-% N_actual_multi3 = size(results_multi3.history_x, 2);
-% time_multi3 = (0:N_actual_multi3-1) * results_multi3.dt;
-% d_min_log_multi3 = zeros(1, N_actual_multi3);
-% for i = 1:N_actual_multi3
+% N_multi3 = size(results_multi3.history_x, 2);
+% t_multi3 = (0:N_multi3-1) * results_multi3.dt;
+% d_min_log_multi3 = zeros(1, N_multi3);
+% for i = 1:N_multi3
 %     p = results_multi3.history_x(1:3, i);
 %     d_all = vecnorm(p - obs_center, 2, 1) - obs_radius;
 %     d_min_log_multi3(i) = min(d_all);
@@ -516,7 +517,7 @@ v_act_norm_multi = sqrt(sum(results_multi.history_x(7:9, 1:N_actual_multi).^2, 1
 obs_center_2D = obs_center(1:2, :); 
 obs_radius_2D = obs_radius; % Radius tetap sama
 
-for i = 1:N_actual_single
+for i = 1:N_single
     % PENTING: Ambil hanya X dan Y dari posisi drone
     p_2D = results_multi3.history_x(1:2, i); 
     
@@ -528,7 +529,7 @@ for i = 1:N_actual_single
     d_min_log_multi3(i) = min(d_all_2D);
 end
 
-v_act_norm_multi3 = sqrt(sum(results_multi3.history_x(7:9, 1:N_actual_multi3).^2, 1));
+v_act_norm_multi3 = sqrt(sum(results_multi3.history_x(7:9, 1:N_multi3).^2, 1));
 
 
 %% --- Plot 1: Minimum Distance to Obstacles Comparison ---
@@ -538,14 +539,14 @@ box on;
 grid on;
 
 % --- Plot Minimum Distance ---
-% 'time_single', 'd_min_log_single' likely refer to your Hybrid NMPC approach
-h_dist_hybrid = plot(time_single, d_min_log_single, 'Color', color1, 'LineWidth', 1.5);
+% 't_single', 'd_min_log_single' likely refer to your Hybrid NMPC approach
+h_dist_hybrid = plot(t_single, d_min_log_single, 'Color', color1, 'LineWidth', 1.5);
 
-% 'time_multi', 'd_min_log_multi' likely refer to the Cost-only APF benchmark
-h_dist_cost_only = plot(time_multi, d_min_log_multi, 'Color', color2, 'LineWidth', 1.5);
+% 't_multi', 'd_min_log_multi' likely refer to the Cost-only APF benchmark
+h_dist_cost_only = plot(t_multi, d_min_log_multi, 'Color', color2, 'LineWidth', 1.5);
 
-% 'time_multi3', 'd_min_log_multi3' likely refer to the Input-Bias APF benchmark
-h_dist_input_bias = plot(time_multi3, d_min_log_multi3, 'Color', color3, 'LineWidth', 1.5);
+% 't_multi3', 'd_min_log_multi3' likely refer to the Input-Bias APF benchmark
+h_dist_input_bias = plot(t_multi3, d_min_log_multi3, 'Color', color3, 'LineWidth', 1.5);
 
 ylabel('Minimum Distance to Obstacles [m]');
 xlabel('Time [s]');
@@ -580,9 +581,9 @@ box on;
 grid on;
 
 % --- Plot Total Speed ---
-h_speed_hybrid = plot(time_single, v_act_norm_single, 'Color', color1, 'LineWidth', 1.5);
-h_speed_cost_only = plot(time_multi, v_act_norm_multi, 'Color', color2, 'LineWidth', 1.5);
-h_speed_input_bias = plot(time_multi3, v_act_norm_multi3, 'Color', color3, 'LineWidth', 1.5);
+h_speed_hybrid = plot(t_single, v_act_norm_single, 'Color', color1, 'LineWidth', 1.5);
+h_speed_cost_only = plot(t_multi, v_act_norm_multi, 'Color', color2, 'LineWidth', 1.5);
+h_speed_input_bias = plot(t_multi3, v_act_norm_multi3, 'Color', color3, 'LineWidth', 1.5);
 
 ylabel('Drone Total Speed [m/s]');
 xlabel('Time [s]');

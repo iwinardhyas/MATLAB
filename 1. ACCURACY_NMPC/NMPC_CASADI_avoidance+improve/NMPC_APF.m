@@ -16,10 +16,10 @@ Ixx = 4.85e-3; % Momen inersia
 Iyy = 4.85e-3;
 Izz = 8.81e-3;
 
-save_data = true;
+save_data = false;
 improvement = true;
 improvement_hybrid = true;
-improvement_tc = false;
+improvement_tc = true;
 trajectory = 1;
 
 %% ---------- APF parameters (set di awal, sebelum loop) ----------
@@ -44,9 +44,12 @@ if trajectory == 1
 %     obs_center = [ 6  6  6  8   12   12   15   15   16   18   18   22  23   24  26  29   30 ;   % x
 %                    9  5.5  3  1.8  4.5   5.5   5   1.5  8.2  6.2  2.8  2   4.8  8   4   2.2  7.0 ;   % y
 %                    z_pos*ones(1,num_obs) ];       % z
-    obs_center = [ 6  9  6  8   12   12   15   15   16   18   18   22  23.5   24  26  29   30 ;   % x
-                       9  5.5  3  1.8  4   6   5   1.5  8.2  6.2  2.8  2   5  8   5   2.2  7.0 ;   % y
-                       z_pos*ones(1,num_obs) ];       % z done
+%     obs_center = [ 6  9  6  8   12   12   15   15   16   18   18   22  23.5   24  26  29   30 ;   % x
+%                        9  5.5  3  1.8  4   6   5   1.5  8.2  6.2  2.8  2   5  8   5   2.2  7.0 ;   % y
+%                        z_pos*ones(1,num_obs) ];       % z done
+    obs_center = [ 6  6  6  8   12   12   15   15   16   18   18   22  23   24  30.5  30.5   30 ;   % x
+                   9  6  3  1.8  4   6.8   6   1.5  8.2  6.2  2.8  2   4.8  8   6.2   7.8  7.0 ;   % y
+                   z_pos*ones(1,num_obs) ];       % limitation
 
     obs_radius = obs_radius_val * ones(1,num_obs);
 elseif trajectory == 2
