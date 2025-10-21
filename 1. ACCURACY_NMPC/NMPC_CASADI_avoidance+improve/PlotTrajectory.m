@@ -397,7 +397,7 @@ axis equal; grid on; box on;
 % title('Drone XY Trajectory with Heading Arrows');
 % legend('Heading','Trajectory','Location','best');
 
-% figure;
-% grid on;
-% drone_Animation(time_vector,x_actual,y_actual,z_actual,history_x(4, :),history_x(5, :),history_x(6, :),num_obs,obstacle_height,obs_center,obs_radius)
-% grid off;
+figure;
+grid on;
+drone_Animation2(time_vector,x_actual,y_actual,z_actual,history_x(4, :),history_x(5, :),history_x(6, :),num_obs,obstacle_height,obs_center,obs_radius)
+grid off;
