@@ -1,7 +1,7 @@
 function [ xdesired ] = QuadrotorReferenceTrajectory4( t )
 
 % FORCE debug mode - pastikan ini yang dipanggil
-trajectory_type = 'figure_eight';
+trajectory_type = 'vertical_ascent';
 
 % Inisialisasi output
 xdesired = zeros(12, 1);
@@ -237,10 +237,54 @@ switch trajectory_type
         % Gabungkan semua variabel ke dalam vektor Xdesired
         xdesired = [x; y; z; phi; theta; psi; xdot; ydot; zdot; phidot; thetadot; psidot];
 
-    otherwise
-        % Default: hovering di ketinggian 1m
-        xdesired = [0;0;1;0;0;0;0;0;0;0;0;0];
-end
+%     otherwise
+%         % Default: hovering di ketinggian 1m
+%         xdesired = [0;0;1;0;0;0;0;0;0;0;0;0];
+    case 'vertical_ascent'
+        % Parameter
+        target_altitude = 10; % Target Z tertinggi (meter)
+        ascent_speed = 0.5;   % Kecepatan pendakian (m/s)
+
+        % Waktu yang diperlukan untuk mencapai target
+        T_ascent = target_altitude / ascent_speed; 
+
+        % Posisi
+        x = 0;
+        y = 0;
+
+        % Z: Linear ramp dari 0 hingga 10 meter
+        if t <= T_ascent
+            z = ascent_speed * t;
+        else
+            % Setelah mencapai target, drone menahan posisi di 10m
+            z = target_altitude;
+        end
+
+        % Kecepatan Posisi
+        xdot = 0;
+        ydot = 0;
+
+        % Zdot: Kecepatan konstan selama pendakian, nol saat menahan posisi
+        if t <= T_ascent
+            zdot = ascent_speed;
+        else
+            zdot = 0;
+        end
+
+        % Orientasi Sudut Euler (Harus 0 untuk penerbangan vertikal murni)
+        phi = 0;
+        theta = 0;
+        psi = 0; % Yaw juga nol
+
+        % Kecepatan Sudut (Turunan Sudut)
+        phidot = 0; 
+        thetadot = 0; 
+        psidot = 0;
+
+        % Vektor State Target (12x1)
+        xdesired = [x;y;z;phi;theta;psi;xdot;ydot;zdot;phidot;thetadot;psidot];
+
+    end
 
 end
 
