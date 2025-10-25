@@ -1,0 +1,361 @@
+addpath('C:\Users\DELL\Documents\MATLAB\casadi-3.7.0-windows64-matlab2018b');
+import casadi.*
+
+% Clear workspace to avoid variable conflicts
+clear variables
+clear x u
+close all;
+clc
+
+
+N = 10; % Kurangi horizon untuk konvergensi lebih baik
+dt = 0.1; % Time step lebih kecil
+M = 1;
+T_sim = 50;
+N_sim = T_sim / dt;
+dt_sub = dt / M;  % pastikan M sudah didefinisikan
+time_log = 0:dt:T_sim;
+
+% Dimensi State dan Input
+nx = 12; % [x,y,z,phi,theta,psi,vx_inertial,vy_inertial,vz_inertial,p,q,r]
+nu = 4;  % [f1, f2, f3, f4]
+
+massa = 0.5;    % Massa (kg)
+gravitasi = 9.81;   % Gravitasi (m/s^2)
+l = 0.25;   % Panjang lengan (m)
+Ixx = 4.85e-3; % Momen inersia
+Iyy = 4.85e-3;
+Izz = 8.81e-3;
+
+% Hovering thrust per motor (pastikan numeric)
+thrust_hover_value = double(massa * gravitasi / 4);  % Force as double
+fprintf('Hover thrust per motor: %.3f N\n', thrust_hover_value);
+
+%% 3. Definisikan Model Dinamika Quadrotor yang Konsisten
+% Input simbolik
+x = MX.sym('x', nx, 1); % State
+u = MX.sym('u', nu, 1); % Input (gaya dorong motor)
+wind_input = MX.sym('wind_input', 3); % [u_wind; v_wind; w_wind]
+
+% Ekstrak state
+px = x(1); py = x(2); pz = x(3);
+phi = x(4); theta = x(5); psi = x(6);
+vx_inertial = x(7); vy_inertial = x(8); vz_inertial = x(9);
+p = x(10); q = x(11); r = x(12);
+
+% Konversi thrust motor ke total force dan torque
+F_total = sum(u);
+% tau_phi = l * (u(4) - u(2)); % Torsi Roll (Misal u4 naik, u2 turun -> Roll)
+% tau_theta = l * (u(3) - u(1)); % Torsi Pitch (Misal u3 naik, u1 turun -> Pitch)  
+% Ganti baris 118-119 dengan ini:
+
+% Roll (tau_phi) - Sumbu X: Motor Kanan (u2+u3) vs. Motor Kiri (u1+u4)
+% Jika u2 dan u3 lebih besar, terjadi Roll positif (ke kanan).
+tau_phi = l * ((u(2) + u(3)) - (u(1) + u(4))); 
+
+% Pitch (tau_theta) - Sumbu Y: Motor Depan (u1+u2) vs. Motor Belakang (u3+u4)
+% Jika u1 dan u2 lebih besar, terjadi Pitch positif (ke depan).
+tau_theta = l * ((u(3) + u(4)) - (u(1) + u(2)));
+tau_psi = 0.005 * (-u(1) + u(2) - u(3) + u(4)); 
+
+% Rotation matrices
+R_b_i = rotz(psi) * roty(theta) * rotx(phi);
+
+% Inertial-to-Body rotation matrix (transpose)
+R_i_b = R_b_i'; % R_i_b = R_b_i^T (orthogonal matrix)
+
+% ===== THRUST FORCE =====
+% Thrust dalam body frame (mengarah ke atas sepanjang z-axis body)
+thrust_body = [0; 0; F_total];
+
+% Transform ke inertial frame
+thrust_inertial = R_b_i * thrust_body;
+
+% ===== DRAG FORCE (DENGAN WIND) =====
+% Kecepatan drone dalam inertial frame
+V_inertial = x(7:9); % [vx_inertial; vy_inertial; vz_inertial]
+
+% Transform kecepatan ke body frame
+V_body = R_i_b * V_inertial;
+
+% Transform kecepatan angin ke body frame
+wind_body = R_i_b * wind_input; % wind_input = [u_wind; v_wind; w_wind]
+
+% Kecepatan relatif dalam body frame (drone relatif terhadap udara)
+V_relative_body = V_body - wind_body;
+
+% Koefisien drag dalam body frame
+% Cd_x, Cd_y (lateral) biasanya lebih besar dari Cd_z (axial)
+Cd = diag([0.5; 0.5; 0.25]); % [Cd_x; Cd_y; Cd_z]
+
+% Gaya drag dalam body frame (proporsional dengan V^2, disederhanakan ke V)
+% Untuk model lengkap: F_drag = -0.5 * rho * Cd * A * V^2
+% Versi linear: F_drag = -Cd * V
+F_drag_body = -Cd * V_relative_body;
+
+% Transform drag force kembali ke inertial frame
+F_drag_inertial = R_b_i * F_drag_body;
+
+a_drag_inertial = F_drag_inertial / massa;
+% Percepatan dalam inertial frames
+ax_inertial = thrust_inertial(1) / massa + a_drag_inertial(1);
+ay_inertial = thrust_inertial(2) / massa + a_drag_inertial(2);
+az_inertial = thrust_inertial(3) / massa - gravitasi + a_drag_inertial(3);
+
+% Persamaan Euler untuk angular acceleration
+p_dot = (tau_phi + (Iyy - Izz) * q * r) / Ixx;
+q_dot = (tau_theta + (Izz - Ixx) * p * r) / Iyy;
+r_dot = (tau_psi + (Ixx - Iyy) * p * q) / Izz;
+
+% Kinematic equations untuk orientasi
+phi_dot = p + q*sin(phi)*tan(theta) + r*cos(phi)*tan(theta);
+theta_dot = q*cos(phi) - r*sin(phi);
+psi_dot = q*sin(phi)/cos(theta) + r*cos(phi)/cos(theta);
+
+% State derivative
+xdot = [vx_inertial; vy_inertial; vz_inertial; ... % Position rates
+        phi_dot; theta_dot; psi_dot; ... % Orientation rates
+        ax_inertial; ay_inertial; az_inertial; ... % Velocity rates (inertial)
+        p_dot; q_dot; r_dot]; % Angular velocity rates
+
+% Fungsi dinamika
+f = Function('f', {x, u, wind_input}, {xdot});
+
+% Diskretisasi RK4
+X = MX.sym('X', nx, 1);
+U = MX.sym('U', nu, 1);
+WIND_sym = MX.sym('WIND_sym', 3); % vektor gangguan angin
+XDOT = f(X, U, WIND_sym);
+k1 = XDOT;
+k2 = f(X + dt/2*k1, U, WIND_sym);
+k3 = f(X + dt/2*k2, U, WIND_sym);
+k4 = f(X + dt*k3, U, WIND_sym);
+X_next = X + dt/6*(k1 + 2*k2 + 2*k3 + k4);
+F_discrete = Function('F_discrete', {X, U, WIND_sym}, {X_next});
+
+x_next_sub = X + dt_sub/6 * (k1 + 2*k2 + 2*k3 + k4);
+F_sub = Function('F_sub', {X, U, WIND_sym}, {x_next_sub});
+
+% Kecepatan rata-rata angin drone (m/s). Jika drone bergerak, ini adalah True Airspeed.
+V_w = 0.0000001; 
+
+% Intensitas Turbulensi (Standard Deviation)
+sigma_u = 0.2; % Longitudinal (m/s)
+sigma_v = 0.15; % Lateral (m/s)
+sigma_w = 0.1; % Vertikal (m/s)
+
+% Skala Panjang Turbulensi (Scale Lengths)
+% Umumnya Lw=0.5*Lu, Lv=Lu
+Lu = 1; % (m)
+Lv = Lu;  % (m)
+Lw = Lu / 2; % (m)
+
+T_sim_wind = T_sim;
+% Generate gangguan angin Von Karman
+[time_wind, ug, vg, wg, wind_magnitude] = generate_von_karman_wind( ...
+     V_w, sigma_u, sigma_v, sigma_w, Lu, Lv, Lw, dt, T_sim_wind);
+
+% Gabungkan vektor angin
+wind_data = [ug, vg, wg];
+
+% Kp = [Kp_x; Kp_y; Kp_z; Kp_phi; Kp_theta; Kp_psi]
+Kp = [0.5; 0.5; 10.0; 100.0; 100.0; 10.0]; 
+Ki = [0.01; 0.01; 1.0; 0; 0; 0];         % Integrator (hanya di posisi Z, X, Y)
+Kd = [5.0; 5.0; 5.0; 10.0; 10.0; 1.0];   % D-gain untuk X, Y, Z, phi, theta, psi
+
+
+% State Integrator PID (Hanya untuk X, Y, Z)
+PID_I_state = zeros(3, 1); 
+
+% Struktur Parameter Sistem yang Diperlukan oleh PID
+PID_params.massa = massa;
+PID_params.gravitasi = gravitasi;
+PID_params.l = l;
+% Batasan Motor (diambil dari setup NMPC Anda)
+PID_params.u_min = 0.05; 
+PID_params.u_max = 2.5;
+
+
+
+% Simpan Motor Allocation Matrix (dari model dinamika Anda)
+k_yaw = 0.005; 
+Mixer = [ 1,  1,  1,  1;
+          PID_params.l, -l, -l,  PID_params.l; 
+          l,  l, -l, -l;
+         -k_yaw, k_yaw, -k_yaw, k_yaw]; 
+PID_params.Mixer_Inv = inv(Mixer);
+
+x0 = QuadrotorReferenceTrajectory4(0);
+x_current = x0; % <-- Pastikan baris ini ada!
+
+% Sesuaikan ukuran wind_data agar pas
+if size(wind_data, 1) < N_sim + N
+    last_row = wind_data(end, :);
+    extra_rows = repmat(last_row, N_sim + N - size(wind_data,1), 1);
+    wind_data = [wind_data; extra_rows];
+end
+
+% Logging
+x_log = zeros(nx, N_sim+1);
+u_log = zeros(nu, N_sim);
+x_log(:, 1) = x0;
+t_sim = 0; % Waktu simulasi awal
+
+% Loop Simulasi
+for i = 1:N_sim
+    
+    % ... (Kode untuk mengambil wind dan x_target (menggunakan QuadrotorReferenceTrajectory4(t)))
+
+    % Dapatkan State Target (t+dt) untuk loop NMPC/PID
+    t_ref = T_sim + dt;
+    x_target_now = QuadrotorReferenceTrajectory4(t_ref); % Target di akhir step
+
+    % --- 4. Hitung Input PID ---
+
+    % Hitung Error Integral (Hanya untuk Posisi X, Y, Z)
+    % Error X, Y, Z saat ini (posisi)
+    error_pos_current = x_target_now(1:3) - x_current(1:3); 
+    PID_I_state = PID_I_state + error_pos_current * dt; % Update integrator
+
+    % Panggil Fungsi Kontrol PID
+    u_applied = pid_controller(x_current, x_target_now, PID_params, Kp, Ki, Kd, PID_I_state); 
+    
+    % --- 5. Terapkan Input Kontrol (Simulasi) ---
+    % Simulasikan N sub-langkah menggunakan F_sub
+    x_next = x_current;
+    wind_turbulence = wind_data(i, :)'; 
+    current_wind = [V_w; 0; 0] + wind_turbulence; % Angin 5 m/s di sumbu X
+
+    for j = 1:M
+        % Gunakan u_applied (dari NMPC atau PID)
+        x_next = full(F_sub(x_next, u_applied, current_wind)); 
+    end
+    
+    x_current = x_next;
+    
+    % --- 6. Logging ---
+    u_log(:, i) = u_applied; % Logging input yang diterapkan
+    x_log(:, i+1) = x_current;
+    t_sim = t_sim + dt;
+    % ... (Sisa Logging)
+end
+
+% Buat matriks untuk menyimpan seluruh trajektori referensi
+x_ref_log = zeros(nx, N_sim + 1);
+
+for k = 1:N_sim + 1
+    % Panggil fungsi untuk setiap nilai waktu skalar
+    x_ref_log(:, k) = QuadrotorReferenceTrajectory4(time_log(k));
+end
+
+%% 9. Plot Hasil (Koreksi)
+%% 9. Plot Hasil (Dipisah)
+
+% --- WINDOW 1: POSISI (X, Y, Z) ---
+figure('Name', 'Posisi Drone (Actual vs Target)');
+subplot(3, 1, 1);
+plot(time_log, x_log(1, :), 'b', 'LineWidth', 1.5); hold on;
+plot(time_log, x_ref_log(1, :), 'r--', 'LineWidth', 1.0);
+title('Posisi X');
+legend('Actual', 'Target', 'Location', 'best');
+xlabel('Waktu (s)');
+ylabel('X (m)');
+grid on;
+
+subplot(3, 1, 2);
+plot(time_log, x_log(2, :), 'b', 'LineWidth', 1.5); hold on;
+plot(time_log, x_ref_log(2, :), 'r--', 'LineWidth', 1.0);
+title('Posisi Y');
+xlabel('Waktu (s)');
+ylabel('Y (m)');
+grid on;
+
+subplot(3, 1, 3);
+plot(time_log, x_log(3, :), 'b', 'LineWidth', 1.5); hold on;
+plot(time_log, x_ref_log(3, :), 'r--', 'LineWidth', 1.0);
+title('Posisi Z');
+xlabel('Waktu (s)');
+ylabel('Z (m)');
+grid on;
+
+% --- WINDOW 2: SUDUT EULER (ROLL, PITCH, YAW) ---
+figure('Name', 'Sudut Euler (Roll, Pitch, Yaw)');
+subplot(3, 1, 1);
+plot(time_log, rad2deg(x_log(4, :)), 'LineWidth', 1.5);
+title('Sudut Roll (\phi)');
+xlabel('Waktu (s)');
+ylabel('Sudut (deg)');
+grid on;
+
+subplot(3, 1, 2);
+plot(time_log, rad2deg(x_log(5, :)), 'LineWidth', 1.5);
+title('Sudut Pitch (\theta)');
+xlabel('Waktu (s)');
+ylabel('Sudut (deg)');
+grid on;
+
+subplot(3, 1, 3);
+plot(time_log, rad2deg(x_log(6, :)), 'LineWidth', 1.5);
+title('Sudut Yaw (\psi)');
+xlabel('Waktu (s)');
+ylabel('Sudut (deg)');
+grid on;
+
+% --- WINDOW 3: INPUT MOTOR (THRUST u1-u4) ---
+figure('Name', 'Input Motor Thrust');
+plot(time_log(1:end-1), u_log(1, :), 'LineWidth', 1.5); hold on;
+plot(time_log(1:end-1), u_log(2, :), 'LineWidth', 1.5);
+plot(time_log(1:end-1), u_log(3, :), 'LineWidth', 1.5);
+plot(time_log(1:end-1), u_log(4, :), 'LineWidth', 1.5);
+yline(PID_params.u_max, 'r--', 'LineWidth', 1.5, 'DisplayName', 'Umax'); 
+yline(PID_params.u_min, 'r--', 'LineWidth', 1.5, 'DisplayName', 'Umin'); 
+title('Input Motor (u1-u4)');
+legend('u1 (Motor 1)', 'u2 (Motor 2)', 'u3 (Motor 3)', 'u4 (Motor 4)', 'Location', 'best');
+xlabel('Waktu (s)');
+ylabel('Dorong (N)');
+grid on;
+
+%% 10. Plot Trajektori 2D dan 3D
+
+% --- Plot 2D (Top-Down View: X vs Y) ---
+figure;
+plot(x_log(1, :), x_log(2, :), 'b-', 'LineWidth', 1.5); hold on;
+plot(x_ref_log(1, :), x_ref_log(2, :), 'r--', 'LineWidth', 1.5);
+scatter(x_log(1, end), x_log(2, end), 80, 'b', 'filled'); % Posisi Akhir Actual
+scatter(x_ref_log(1, end), x_ref_log(2, end), 80, 'r', 'filled'); % Posisi Akhir Target
+legend('Actual Trajectory', 'Reference Trajectory', 'Location', 'best');
+title('Trajektori Drone 2D (X vs Y)');
+xlabel('X (m)');
+ylabel('Y (m)');
+axis equal; % Penting agar skala X dan Y sama
+grid on;
+
+% --- Plot 3D (X, Y, Z) ---
+figure;
+plot3(x_log(1, :), x_log(2, :), x_log(3, :), 'b-', 'LineWidth', 2.0); hold on;
+plot3(x_ref_log(1, :), x_ref_log(2, :), x_ref_log(3, :), 'r--', 'LineWidth', 2.0);
+
+% Tandai Titik Awal (Z=0)
+scatter3(x_log(1, 1), x_log(2, 1), x_log(3, 1), 100, 'k', 'o', 'filled'); 
+% Tandai Titik Akhir (Z=10m)
+scatter3(x_log(1, end), x_log(2, end), x_log(3, end), 100, 'b', 's', 'filled'); 
+
+legend('Actual Trajectory', 'Reference Trajectory', 'Start', 'End', 'Location', 'best');
+title('Trajektori Drone 3D (X, Y, Z)');
+xlabel('X (m)');
+ylabel('Y (m)');
+zlabel('Z (m)');
+grid on;
+view(3); % Atur tampilan ke sudut 3D
+
+function R_x = rotx(t)
+    R_x = [1, 0, 0; 0, cos(t), -sin(t); 0, sin(t), cos(t)];
+end
+
+function R_y = roty(t)
+    R_y = [cos(t), 0, sin(t); 0, 1, 0; -sin(t), 0, cos(t)];
+end
+
+function R_z = rotz(t)
+    R_z = [cos(t), -sin(t), 0; sin(t), cos(t), 0; 0, 0, 1];
+end
